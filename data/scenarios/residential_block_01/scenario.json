@@ -1,0 +1,41 @@
+{
+  "scenario_id": "residential_block_01",
+  "name": "Residential Block Roof Inspection",
+  "origin": {
+    "lon": 113.93,
+    "lat": 22.54,
+    "alt": 0.0
+  },
+  "camera": {
+    "hfov_deg": 78,
+    "vfov_deg": 50,
+    "gimbal_pitch_deg": -45,
+    "ray_width": 80,
+    "ray_height": 45
+  },
+  "default_route": [
+    {
+      "lon": 113.9297,
+      "lat": 22.5398,
+      "alt": 80,
+      "yaw": 45
+    },
+    {
+      "lon": 113.9308,
+      "lat": 22.5407,
+      "alt": 80,
+      "yaw": 45
+    },
+    {
+      "lon": 113.9314,
+      "lat": 22.5411,
+      "alt": 80,
+      "yaw": 35
+    }
+  ],
+  "summary": {
+    "task": "Inspect residential rooftops after maintenance work.",
+    "notice": "Estimated visual exposure is computed from the planned route and camera settings."
+  }
+}
+

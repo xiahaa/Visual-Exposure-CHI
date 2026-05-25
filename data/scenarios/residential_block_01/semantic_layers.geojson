@@ -1,0 +1,44 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "surface_id": "courtyard_01",
+        "surface_type": "ground",
+        "semantic_type": "residential_courtyard",
+        "sensitivity": 0.85
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [113.93022, 22.5402],
+          [113.93048, 22.5402],
+          [113.93048, 22.54045],
+          [113.93022, 22.54045],
+          [113.93022, 22.5402]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "surface_id": "school_playground_01",
+        "surface_type": "ground",
+        "semantic_type": "school_playground",
+        "sensitivity": 0.95
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [113.93092, 22.54082],
+          [113.93125, 22.54082],
+          [113.93125, 22.54108],
+          [113.93092, 22.54108],
+          [113.93092, 22.54082]
+        ]]
+      }
+    }
+  ]
+}
+

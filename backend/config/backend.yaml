@@ -1,0 +1,5 @@
+exposure:
+  max_range_m: 250.0
+  recognizability_d0_m: 80.0
+  route_sample_step_m: 5.0
+

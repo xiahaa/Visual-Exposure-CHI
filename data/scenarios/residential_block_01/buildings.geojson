@@ -1,0 +1,42 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "building_id": "B01",
+        "height_m": 24,
+        "semantic_type": "residential"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [113.92985, 22.54005],
+          [113.93015, 22.54005],
+          [113.93015, 22.54032],
+          [113.92985, 22.54032],
+          [113.92985, 22.54005]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "building_id": "B02",
+        "height_m": 32,
+        "semantic_type": "residential"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [113.93055, 22.54042],
+          [113.9309, 22.54042],
+          [113.9309, 22.54072],
+          [113.93055, 22.54072],
+          [113.93055, 22.54042]
+        ]]
+      }
+    }
+  ]
+}
+
