@@ -14,6 +14,8 @@ from ..trajectory import route_length_m, sample_route
 
 @dataclass
 class ExposureStats:
+    """Accumulated visibility statistics for one surface cell."""
+
     exposure: float = 0.0
     visible_count: int = 0
     distance_sum: float = 0.0
@@ -27,6 +29,12 @@ class ExposureStats:
         sensitivity: float,
         recognizability_d0_m: float,
     ) -> None:
+        """Add one first-hit ray contribution to this surface.
+
+        The score is intentionally a proxy: closer, more frontal views and more
+        sensitive semantics contribute more. It is not a legal/privacy judgment.
+        """
+
         distance_weight = min(1.0, recognizability_d0_m / max(distance, 1e-6))
         incidence_weight = max(0.0, min(1.0, incidence))
         self.exposure += distance_weight * incidence_weight * time_weight * sensitivity
@@ -48,13 +56,19 @@ class ExposureStats:
 
 
 def compute_exposure(request: ExposureRequest) -> dict:
+    """Compute estimated visual exposure for one route and camera setting."""
+
     exposure_config = load_backend_config().exposure
     scenario = load_scenario(request.scenario_id)
     origin = GeoPoint(**scenario["origin"])
+    # Surface cells are the aggregation units. User preferences can raise their
+    # sensitivity before raycasting, but geometry remains unchanged.
     surface_cells = _apply_user_preferences(build_surface_cells(scenario), request)
     surface_by_id = {surface.surface_id: surface for surface in surface_cells}
     stats = {surface.surface_id: ExposureStats() for surface in surface_cells}
 
+    # Convert the planned route into discrete camera poses, then cast a
+    # low-resolution camera ray grid from each pose.
     poses = sample_route(request.route, origin, step_m=exposure_config.route_sample_step_m)
     visibility_scene = VisibilityScene.from_surface_cells(surface_cells)
 
@@ -62,6 +76,8 @@ def compute_exposure(request: ExposureRequest) -> dict:
         rays = generate_camera_rays(pose, request.camera)
         for hit in visibility_scene.cast(rays, max_range_m=exposure_config.max_range_m):
             surface = surface_by_id[hit.surface_id]
+            # Open3D gives us first-hit geometry. The exposure model translates
+            # each valid hit into a weighted score for its semantic surface.
             stats[hit.surface_id].update(
                 distance=hit.distance,
                 incidence=hit.incidence,
@@ -80,6 +96,8 @@ def compute_exposure(request: ExposureRequest) -> dict:
     for surface in surface_cells:
         surface_stats = stats[surface.surface_id]
         exposure = round(surface_stats.exposure, 4)
+        # GeoJSON properties are designed for direct deck.gl styling and
+        # explanation panels. Geometry stays in lon/lat for frontend rendering.
         properties = {
             "surface_id": surface.surface_id,
             "surface_type": surface.surface_type,
@@ -100,6 +118,8 @@ def compute_exposure(request: ExposureRequest) -> dict:
         )
 
         total_exposure += surface_stats.exposure
+        # Sensitive exposure is reported separately because it is the most
+        # important summary value for the privacy-task trade-off UI.
         if surface.sensitivity >= 0.8:
             sensitive_exposure += surface_stats.exposure
         if surface_stats.exposure > max_exposure:
@@ -107,6 +127,8 @@ def compute_exposure(request: ExposureRequest) -> dict:
             max_area = surface.semantic_type
 
         lon, lat = _geometry_centroid(surface.geometry_geojson)
+        # Point summaries are convenient for labels, pins, and quick heatmap
+        # previews; polygon/line geometries remain available in exposure_surfaces.
         exposure_points.append(
             {
                 "lon": lon,
@@ -130,6 +152,8 @@ def compute_exposure(request: ExposureRequest) -> dict:
             "ray_count": len(poses) * request.camera.ray_width * request.camera.ray_height,
             "estimated_task_coverage": _estimate_task_coverage(stats, surface_cells),
             "engine": "open3d_raycasting",
+            # Echo the active engine settings so experiment runs can be
+            # reproduced from logs without guessing which YAML was used.
             "config": {
                 "max_range_m": exposure_config.max_range_m,
                 "recognizability_d0_m": exposure_config.recognizability_d0_m,
@@ -140,6 +164,8 @@ def compute_exposure(request: ExposureRequest) -> dict:
 
 
 def compare_exposure(request: CompareRequest) -> dict:
+    """Compute before/after summaries and derived trade-off deltas."""
+
     before = compute_exposure(request.before)["summary"]
     after = compute_exposure(request.after)["summary"]
 
@@ -164,21 +190,34 @@ def compare_exposure(request: CompareRequest) -> dict:
 def _apply_user_preferences(
     surface_cells: list[SurfaceCell], request: ExposureRequest
 ) -> list[SurfaceCell]:
+    """Apply user-drawn preference polygons as sensitivity modifiers.
+
+    Preferences do not delete surfaces or perform path planning. They change how
+    visible hits are weighted, preserving the system boundary: the backend
+    estimates exposure, while users express what matters.
+    """
+
     sensitive_shapes = _geojson_shapes(request.user_preferences.sensitive_areas)
     do_not_capture_shapes = _geojson_shapes(request.user_preferences.do_not_capture)
 
     adjusted = []
     for surface in surface_cells:
+        # Use the surface's map-space centroid for preference overlap. This is a
+        # stable MVP approximation; later versions could use full polygon
+        # intersection in projected coordinates.
         lon, lat = _geometry_centroid(surface.geometry_geojson)
         point = Point(lon, lat)
         sensitivity = surface.sensitivity
         semantic_type = surface.semantic_type
 
         if any(polygon.contains(point) or polygon.touches(point) for polygon in sensitive_shapes):
+            # User-marked sensitive regions should be at least as important as
+            # the strongest built-in semantic regions.
             sensitivity = max(sensitivity, 0.95)
             semantic_type = f"{semantic_type}_user_sensitive"
 
         if any(polygon.contains(point) or polygon.touches(point) for polygon in do_not_capture_shapes):
+            # Do-not-capture is the strongest spatial preference in the MVP.
             sensitivity = max(sensitivity, 1.0)
             semantic_type = f"{semantic_type}_do_not_capture"
 
@@ -197,6 +236,8 @@ def _apply_user_preferences(
 
 
 def _geojson_shapes(geojson: dict | None) -> list:
+    """Parse supported GeoJSON inputs into Shapely geometries."""
+
     if not geojson:
         return []
     if geojson.get("type") == "FeatureCollection":
@@ -207,6 +248,8 @@ def _geojson_shapes(geojson: dict | None) -> list:
 
 
 def _estimate_task_coverage(stats: dict[str, ExposureStats], surface_cells: list[SurfaceCell]) -> float:
+    """Estimate task coverage as the fraction of roof cells observed at least once."""
+
     roof_cells = [surface for surface in surface_cells if surface.surface_type == "roof"]
     if not roof_cells:
         return 0.0
@@ -215,6 +258,8 @@ def _estimate_task_coverage(stats: dict[str, ExposureStats], surface_cells: list
 
 
 def _comparison_explanation(before: dict, after: dict) -> str:
+    """Return a concise explanation suitable for the comparison panel."""
+
     if after["sensitive_exposure"] < before["sensitive_exposure"]:
         return "The modified condition reduces estimated sensitive visual exposure based on first-hit raycasting."
     if after["sensitive_exposure"] > before["sensitive_exposure"]:
@@ -223,18 +268,24 @@ def _comparison_explanation(before: dict, after: dict) -> str:
 
 
 def _percent_reduction(before: float, after: float) -> float:
+    """Return percentage decrease from before to after."""
+
     if before == 0.0:
         return 0.0
     return round(((before - after) / before) * 100.0, 2)
 
 
 def _percent_increase(before: float, after: float) -> float:
+    """Return percentage increase from before to after."""
+
     if before == 0.0:
         return 0.0
     return round(((after - before) / before) * 100.0, 2)
 
 
 def _geometry_centroid(geometry: dict) -> tuple[float, float]:
+    """Compute a lightweight centroid for Polygon or LineString GeoJSON."""
+
     if geometry["type"] == "Polygon":
         return _points_centroid(geometry["coordinates"][0])
     if geometry["type"] == "LineString":
@@ -243,6 +294,8 @@ def _geometry_centroid(geometry: dict) -> tuple[float, float]:
 
 
 def _points_centroid(ring: list[list[float]]) -> tuple[float, float]:
+    """Average coordinate points for a simple centroid approximation."""
+
     points = ring[:-1] if ring[0] == ring[-1] else ring
     lon = sum(point[0] for point in points) / len(points)
     lat = sum(point[1] for point in points) / len(points)
