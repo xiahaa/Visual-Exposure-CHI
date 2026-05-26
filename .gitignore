@@ -19,3 +19,6 @@ Thumbs.db
 .vscode/
 
 backend/tests/*
+yes
+yes.pub
+docs/feedback.md

@@ -337,6 +337,15 @@ h1 {
   cursor: not-allowed;
 }
 
+.planning-action {
+  margin-top: 10px;
+  background: #8a2f7d;
+}
+
+.planning-action:disabled {
+  background: #b79aae;
+}
+
 .segmented,
 .tool-row {
   display: flex;
@@ -398,6 +407,73 @@ h1 {
   padding: 10px;
   border: 1px solid #d9e2e5;
   background: #f8fafb;
+}
+
+.planning-options {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #d9e2e5;
+  background: #fbfcfd;
+}
+
+.planning-options-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #31434b;
+  font-size: 0.84rem;
+}
+
+.planning-options-header span {
+  color: #667a82;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.planning-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #cbd8dd;
+  background: #fff;
+}
+
+.planning-card.active {
+  border-color: #8a2f7d;
+  background: #fdf5fb;
+}
+
+.planning-card-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #30434b;
+}
+
+.planning-card-title span {
+  color: #8a2f7d;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.planning-card p {
+  margin: 0;
+  color: #536871;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.planning-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.planning-metrics .metric {
+  padding: 8px;
 }
 
 .route-tools {

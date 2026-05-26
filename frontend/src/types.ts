@@ -84,6 +84,36 @@ export type CompareResponse = {
   explanation: string;
 };
 
+export type PlanningOption = {
+  id: string;
+  label: string;
+  strategy: string;
+  modified_route: RoutePoint[];
+  modified_camera: CameraConfig;
+  summary: ExposureSummary;
+  delta: {
+    sensitive_exposure_reduction_percent: number;
+    total_exposure_reduction_percent: number;
+    route_length_increase_percent: number;
+    coverage_loss_percent: number;
+  };
+  objective_terms: {
+    privacy: number;
+    route_length: number;
+    smoothness: number;
+    altitude: number;
+    gimbal: number;
+    task: number;
+    objective: number;
+  };
+  explanation: string;
+};
+
+export type PlanningResponse = {
+  baseline_summary: ExposureSummary;
+  options: PlanningOption[];
+};
+
 export type PreferenceKind = 'sensitive_area' | 'do_not_capture';
 
 export type StudyCondition = 'basic_notice' | 'camera_footprint' | 'visual_exposure';

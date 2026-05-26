@@ -69,3 +69,37 @@ class CompareRequest(BaseModel):
     scenario_id: str
     before: ExposureRequest
     after: ExposureRequest
+
+
+class PlannerWeights(BaseModel):
+    """Objective weights for privacy-aware route/camera candidate ranking."""
+
+    privacy: float = Field(default=1.0, ge=0)
+    route_length: float = Field(default=0.25, ge=0)
+    smoothness: float = Field(default=0.1, ge=0)
+    altitude: float = Field(default=0.08, ge=0)
+    gimbal: float = Field(default=0.08, ge=0)
+    task: float = Field(default=0.6, ge=0)
+
+
+class PlannerConfig(BaseModel):
+    """Configuration for deterministic candidate-based planning."""
+
+    max_options: int = Field(default=3, ge=1, le=5)
+    max_candidates: int = Field(default=8, ge=1, le=30)
+    evaluation_ray_width: int = Field(default=32, ge=1, le=160)
+    evaluation_ray_height: int = Field(default=18, ge=1, le=90)
+    influence_radius_m: float = Field(default=120.0, gt=0)
+    min_task_coverage: float = Field(default=0.0, ge=0, le=1)
+    max_route_length_increase_percent: float | None = Field(default=50.0, ge=0)
+    weights: PlannerWeights = Field(default_factory=PlannerWeights)
+
+
+class PlanningRequest(BaseModel):
+    """Request body for `/api/planning/optimize`."""
+
+    scenario_id: str
+    route: list[RoutePoint]
+    camera: CameraConfig
+    user_preferences: UserPreferences = Field(default_factory=UserPreferences)
+    planner_config: PlannerConfig = Field(default_factory=PlannerConfig)

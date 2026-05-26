@@ -1,9 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .models import CompareRequest, ExposureRequest
+from .models import CompareRequest, ExposureRequest, PlanningRequest
 from .scenario_store import load_prepared_mesh, load_scenario, load_surface_cells
 from .services.exposure import compare_exposure, compute_exposure
+from .services.planning import optimize_planning
 
 app = FastAPI(title="CHI Drone Visual Exposure Prototype")
 
@@ -76,6 +77,18 @@ def post_compare_exposure(request: CompareRequest) -> dict:
 
     try:
         return compare_exposure(request)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Scenario not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/planning/optimize")
+def post_optimize_planning(request: PlanningRequest) -> dict:
+    """Generate privacy-aware route/camera alternatives for decision support."""
+
+    try:
+        return optimize_planning(request)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Scenario not found") from exc
     except ValueError as exc:

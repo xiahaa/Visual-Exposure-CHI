@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
-import { compareFixture, exposureFixture, scenarioFixture } from './test/fixtures';
+import { compareFixture, exposureFixture, planningFixture, scenarioFixture } from './test/fixtures';
 
 const mapClickCoordinates = [
   [113.9303, 22.5403],
@@ -240,6 +240,54 @@ describe('App', () => {
     expect(await screen.findByText('Before Sensitive')).toBeInTheDocument();
     expect(screen.getByText('Exposure Delta')).toBeInTheDocument();
     expect(screen.getByText('这些数值概括了应用用户隐私偏好后的取舍关系。')).toBeInTheDocument();
+  });
+
+  it('draws preference vertices before surface inspection while in preference mode', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse(scenarioFixture));
+
+    render(<App />);
+    await screen.findByText('Residential Block Roof Inspection');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sensitive' }));
+    await userEvent.click(screen.getByTestId('deckgl'));
+    await userEvent.click(screen.getByTestId('deckgl'));
+    await userEvent.click(screen.getByTestId('deckgl'));
+
+    expect(screen.getByRole('button', { name: 'Close Polygon' })).toBeEnabled();
+  });
+
+  it('optimizes privacy options and applies a selected planning route', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse(scenarioFixture))
+      .mockResolvedValueOnce(jsonResponse(planningFixture));
+
+    render(<App />);
+    await screen.findByText('Residential Block Roof Inspection');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sensitive' }));
+    await userEvent.click(screen.getByTestId('deckgl'));
+    await userEvent.click(screen.getByTestId('deckgl'));
+    await userEvent.click(screen.getByTestId('deckgl'));
+    await userEvent.click(screen.getByRole('button', { name: 'Close Polygon' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Optimize for Privacy' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+    expect(String(fetchMock.mock.calls[1][0])).toContain('/api/planning/optimize');
+    expect(requestBody.user_preferences.sensitive_areas.features).toHaveLength(1);
+    expect(requestBody.planner_config.evaluation_ray_width).toBe(32);
+    expect(requestBody.planner_config.evaluation_ray_height).toBe(18);
+    expect(await screen.findByText('Planning Options')).toBeInTheDocument();
+    expect(screen.getByText('Privacy-first')).toBeInTheDocument();
+    expect(screen.getAllByText('Sensitive Down')).toHaveLength(2);
+    expect(screen.getByText('Planning generated: previewing Privacy-first.')).toBeInTheDocument();
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Apply' })[0]);
+    expect(screen.getByText('Applied planning option: Privacy-first.')).toBeInTheDocument();
   });
 
   it('switches study conditions and hides visual-exposure controls in C1', async () => {

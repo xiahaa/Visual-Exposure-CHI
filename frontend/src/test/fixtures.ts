@@ -193,3 +193,91 @@ export const compareFixture = {
   },
   explanation: 'The modified condition increases estimated sensitive visual exposure based on first-hit raycasting.',
 };
+
+export const planningFixture = {
+  baseline_summary: exposureFixture.summary,
+  options: [
+    {
+      id: 'privacy_combo',
+      label: 'Privacy-first',
+      strategy: 'combined',
+      modified_route: [
+        { lon: 113.92965, lat: 22.53975, alt: 96, yaw: 38 },
+        { lon: 113.93088, lat: 22.54082, alt: 98, yaw: 38 },
+      ],
+      modified_camera: {
+        hfov_deg: 78,
+        vfov_deg: 50,
+        gimbal_pitch_deg: -68,
+        ray_width: 80,
+        ray_height: 45,
+        min_depth_m: 0,
+        max_depth_m: 162.5,
+      },
+      summary: {
+        ...exposureFixture.summary,
+        total_exposure: 80,
+        sensitive_exposure: 20,
+        route_length_m: 168,
+        estimated_task_coverage: 0.86,
+      },
+      delta: {
+        sensitive_exposure_reduction_percent: 52.61,
+        total_exposure_reduction_percent: 37.69,
+        route_length_increase_percent: 11.41,
+        coverage_loss_percent: 5.49,
+      },
+      objective_terms: {
+        privacy: 20,
+        route_length: 17.2,
+        smoothness: 0,
+        altitude: 17,
+        gimbal: 23,
+        task: 0.86,
+        objective: -12.4,
+      },
+      explanation: 'Combines route offset, altitude increase, and camera adjustment for a stronger privacy response.',
+    },
+    {
+      id: 'balanced_combo',
+      label: 'Balanced',
+      strategy: 'combined',
+      modified_route: [
+        { lon: 113.92968, lat: 22.53978, alt: 88, yaw: 40 },
+        { lon: 113.93084, lat: 22.54076, alt: 90, yaw: 40 },
+      ],
+      modified_camera: {
+        hfov_deg: 78,
+        vfov_deg: 50,
+        gimbal_pitch_deg: -58,
+        ray_width: 80,
+        ray_height: 45,
+        min_depth_m: 0,
+        max_depth_m: 212.5,
+      },
+      summary: {
+        ...exposureFixture.summary,
+        total_exposure: 92,
+        sensitive_exposure: 28,
+        route_length_m: 160,
+        estimated_task_coverage: 0.89,
+      },
+      delta: {
+        sensitive_exposure_reduction_percent: 33.65,
+        total_exposure_reduction_percent: 28.35,
+        route_length_increase_percent: 6.1,
+        coverage_loss_percent: 2.2,
+      },
+      objective_terms: {
+        privacy: 28,
+        route_length: 9.2,
+        smoothness: 0,
+        altitude: 9,
+        gimbal: 13,
+        task: 0.89,
+        objective: -4.1,
+      },
+      explanation: 'Combines route offset, altitude increase, and camera adjustment for a stronger privacy response.',
+    },
+  ],
+};

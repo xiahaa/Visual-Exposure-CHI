@@ -112,6 +112,36 @@ export const compareResponseSchema = z.object({
   explanation: z.string(),
 });
 
+export const planningOptionSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  strategy: z.string(),
+  modified_route: z.array(routePointSchema).min(2),
+  modified_camera: cameraConfigSchema,
+  summary: exposureSummarySchema,
+  delta: z.object({
+    sensitive_exposure_reduction_percent: z.number(),
+    total_exposure_reduction_percent: z.number(),
+    route_length_increase_percent: z.number(),
+    coverage_loss_percent: z.number(),
+  }),
+  objective_terms: z.object({
+    privacy: z.number(),
+    route_length: z.number(),
+    smoothness: z.number(),
+    altitude: z.number(),
+    gimbal: z.number(),
+    task: z.number(),
+    objective: z.number(),
+  }),
+  explanation: z.string(),
+});
+
+export const planningResponseSchema = z.object({
+  baseline_summary: exposureSummarySchema,
+  options: z.array(planningOptionSchema).min(1),
+});
+
 export const routeUploadGeoJsonSchema = z.union([
   z.object({ type: z.literal('LineString'), coordinates: z.array(positionSchema).min(2) }),
   z.object({ type: z.literal('MultiLineString'), coordinates: z.array(z.array(positionSchema).min(2)).min(1) }),
