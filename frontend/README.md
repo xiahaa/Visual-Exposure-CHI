@@ -2,21 +2,23 @@
 
 React + deck.gl interface for the CHI drone visual exposure prototype.
 
-## Planned Layers
+## Development
 
-- `BuildingLayer`: 2.5D extruded building blocks.
-- `RouteLayer`: planned route, waypoints, and direction.
-- `CameraFootprintLayer`: sampled camera coverage footprints.
-- `ExposureLayer`: surface-level exposure cells.
-- `SensitiveAreaLayer`: semantic sensitive regions.
-- `UserPreferenceLayer`: user-drawn do-not-capture and sensitive areas.
-- `ComparisonLayer`: before/after exposure and task impact.
+```powershell
+cd D:\CHI\frontend
+npm install
+npm run dev
+```
 
-## Near-Term Tasks
+The app reads the backend base URL from `VITE_API_BASE_URL`. The default is:
 
-1. Scaffold Vite + React + TypeScript.
-2. Add deck.gl and MapLibre dependencies.
-3. Load `/api/scenarios/residential_block_01`.
-4. Render buildings, route, and semantic layers.
-5. Call `/api/exposure/compute` and render exposure cells.
+```text
+http://127.0.0.1:8011
+```
 
+## Tests
+
+```powershell
+cd D:\CHI\frontend
+npm test
+```

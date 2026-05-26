@@ -1,10 +1,24 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from .models import CompareRequest, ExposureRequest
 from .scenario_store import load_prepared_mesh, load_scenario, load_surface_cells
 from .services.exposure import compare_exposure, compute_exposure
 
 app = FastAPI(title="CHI Drone Visual Exposure Prototype")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:5174",
+        "http://localhost:5174",
+    ],
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 
 @app.get("/api/health")
