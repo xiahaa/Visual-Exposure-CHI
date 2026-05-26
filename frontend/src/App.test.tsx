@@ -147,8 +147,11 @@ describe('App', () => {
     expect(requestBody.user_preferences.do_not_capture.features).toHaveLength(0);
     expect(await screen.findByText('Sensitive Exposure')).toBeInTheDocument();
     expect(screen.getByText('42.2')).toBeInTheDocument();
+    expect(screen.getByText('Affected Buildings')).toBeInTheDocument();
+    expect(screen.getByText('Affected Areas')).toBeInTheDocument();
     expect(screen.getByText('What This Means / 含义说明')).toBeInTheDocument();
-    expect(screen.getByText('暴露值越高表示更多相机射线到达该区域；敏感暴露关注隐私相关区域。')).toBeInTheDocument();
+    expect(screen.getByText('Orange outlines and halos show buildings and areas with non-zero estimated exposure.')).toBeInTheDocument();
+    expect(screen.getByText('橙色轮廓和光环表示估计暴露值不为零的建筑和区域。')).toBeInTheDocument();
   });
 
   it('marks the camera profile as custom after advanced edits', async () => {

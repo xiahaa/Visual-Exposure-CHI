@@ -1,4 +1,5 @@
 import math
+from functools import lru_cache
 
 import numpy as np
 
@@ -33,6 +34,37 @@ def generate_camera_rays(pose: Pose, camera: CameraConfig) -> np.ndarray:
             rays[cursor, :3] = eye
             rays[cursor, 3:] = direction
             cursor += 1
+    return rays
+
+
+def generate_camera_rays_batch(poses: list[Pose], camera: CameraConfig) -> np.ndarray:
+    """Generate Open3D rays for all sampled poses in one NumPy batch."""
+
+    if not poses:
+        return np.empty((0, 6), dtype=np.float32)
+
+    image_offsets = _camera_image_offsets(
+        camera.ray_width,
+        camera.ray_height,
+        float(camera.hfov_deg),
+        float(camera.vfov_deg),
+    )
+    rays_per_pose = image_offsets.shape[0]
+    rays = np.empty((len(poses) * rays_per_pose, 6), dtype=np.float32)
+
+    for index, pose in enumerate(poses):
+        forward, right, up = _camera_basis(pose.yaw, camera.gimbal_pitch_deg)
+        directions = (
+            forward
+            + image_offsets[:, :1] * right
+            + image_offsets[:, 1:] * up
+        )
+        directions /= np.linalg.norm(directions, axis=1, keepdims=True)
+        start = index * rays_per_pose
+        end = start + rays_per_pose
+        rays[start:end, :3] = pose.eye
+        rays[start:end, 3:] = directions
+
     return rays
 
 
@@ -73,3 +105,18 @@ def _sample_axis(count: int, half_extent: float) -> np.ndarray:
     if count == 1:
         return np.array([0.0], dtype=np.float32)
     return np.linspace(-half_extent, half_extent, count, dtype=np.float32)
+
+
+@lru_cache(maxsize=32)
+def _camera_image_offsets(
+    ray_width: int,
+    ray_height: int,
+    hfov_deg: float,
+    vfov_deg: float,
+) -> np.ndarray:
+    """Return cached image-plane x/y offsets for one camera grid."""
+
+    xs = _sample_axis(ray_width, math.tan(math.radians(hfov_deg) / 2.0))
+    ys = _sample_axis(ray_height, math.tan(math.radians(vfov_deg) / 2.0))
+    xx, yy = np.meshgrid(xs, ys)
+    return np.column_stack([xx.ravel(), yy.ravel()]).astype(np.float32)

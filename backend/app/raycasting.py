@@ -20,6 +20,15 @@ class RayHit:
     ray_direction: np.ndarray
 
 
+@dataclass(frozen=True)
+class RaycastArrays:
+    """Vectorized first-hit arrays returned by Open3D."""
+
+    primitive_ids: np.ndarray
+    distances: np.ndarray
+    incidence: np.ndarray
+
+
 class VisibilityScene:
     """Open3D raycasting wrapper with semantic surface mapping."""
 
@@ -87,6 +96,60 @@ class VisibilityScene:
                 )
             )
         return hits
+
+    def cast_arrays(
+        self,
+        rays: np.ndarray,
+        max_range_m: float,
+        min_range_m: float = 0.0,
+    ) -> RaycastArrays:
+        """Cast rays and return valid hits as NumPy arrays."""
+
+        if rays.size == 0:
+            return RaycastArrays(
+                primitive_ids=np.empty(0, dtype=np.int64),
+                distances=np.empty(0, dtype=np.float32),
+                incidence=np.empty(0, dtype=np.float32),
+            )
+
+        result = self.scene.cast_rays(o3d.core.Tensor(rays, dtype=o3d.core.Dtype.Float32))
+        distances = result["t_hit"].numpy()
+        primitive_ids = result["primitive_ids"].numpy().astype(np.int64, copy=False)
+        primitive_normals = result["primitive_normals"].numpy()
+        ray_directions = rays[:, 3:]
+
+        valid = (
+            np.isfinite(distances)
+            & (distances > 0.0)
+            & (distances >= min_range_m)
+            & (distances <= max_range_m)
+            & (primitive_ids >= 0)
+            & (primitive_ids < len(self.mesh.primitive_to_surface))
+        )
+        if not np.any(valid):
+            return RaycastArrays(
+                primitive_ids=np.empty(0, dtype=np.int64),
+                distances=np.empty(0, dtype=np.float32),
+                incidence=np.empty(0, dtype=np.float32),
+            )
+
+        valid_normals = primitive_normals[valid]
+        valid_directions = ray_directions[valid]
+        normal_norms = np.linalg.norm(valid_normals, axis=1)
+        direction_norms = np.linalg.norm(valid_directions, axis=1)
+        denom = normal_norms * direction_norms
+        incidence = np.zeros_like(denom, dtype=np.float32)
+        nonzero = denom > 0.0
+        incidence[nonzero] = np.abs(
+            np.einsum("ij,ij->i", valid_normals[nonzero], valid_directions[nonzero])
+            / denom[nonzero]
+        )
+
+        return RaycastArrays(
+            primitive_ids=primitive_ids[valid],
+            distances=distances[valid].astype(np.float32, copy=False),
+            incidence=np.clip(incidence, 0.0, 1.0),
+        )
 
 
 def _normalize(vector: np.ndarray) -> np.ndarray:

@@ -28,8 +28,8 @@ The app now shows the same guidance in English and Chinese.
 
 应用界面会同时显示英文和中文使用指南。
 
-1. Confirm the `Residential Block Roof Inspection` scenario loads.
-   确认 `Residential Block Roof Inspection` 场景已加载。
+1. Confirm the `Hong Kong Mong Kok Visual Exposure Study` scenario loads.
+   确认 `Hong Kong Mong Kok Visual Exposure Study` 场景已加载。
 2. Inspect the route, buildings, UAV glyphs, and camera frustums.
    查看航线、建筑、无人机标记和相机视锥。
 3. Use the condition switch:

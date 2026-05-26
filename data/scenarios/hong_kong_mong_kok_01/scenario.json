@@ -1,0 +1,48 @@
+{
+  "scenario_id": "hong_kong_mong_kok_01",
+  "name": "Hong Kong Mong Kok Visual Exposure Study",
+  "origin": {
+    "lon": 114.1708,
+    "lat": 22.3182,
+    "alt": 0.0
+  },
+  "camera": {
+    "hfov_deg": 78,
+    "vfov_deg": 50,
+    "gimbal_pitch_deg": -45,
+    "ray_width": 80,
+    "ray_height": 45,
+    "min_depth_m": 0,
+    "max_depth_m": 250
+  },
+  "default_route": [
+    {
+      "lon": 114.1688,
+      "lat": 22.3152,
+      "alt": 95,
+      "yaw": 25
+    },
+    {
+      "lon": 114.1702,
+      "lat": 22.3172,
+      "alt": 95,
+      "yaw": 25
+    },
+    {
+      "lon": 114.1718,
+      "lat": 22.3195,
+      "alt": 95,
+      "yaw": 25
+    },
+    {
+      "lon": 114.173,
+      "lat": 22.3216,
+      "alt": 95,
+      "yaw": 20
+    }
+  ],
+  "summary": {
+    "task": "Assess a high-density Hong Kong urban route using real OSM buildings and sensitive public areas.",
+    "notice": "Estimated visual exposure is computed from OpenStreetMap footprints, inferred building heights, and planned camera settings."
+  }
+}

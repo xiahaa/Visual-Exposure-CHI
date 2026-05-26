@@ -1,13 +1,13 @@
 from dataclasses import dataclass
 
+import numpy as np
 from shapely.geometry import Point, shape
 
-from ..camera import generate_camera_rays
+from ..camera import generate_camera_rays_batch
 from ..config import load_backend_config
 from ..geo import GeoPoint
 from ..models import CompareRequest, ExposureRequest
-from ..raycasting import VisibilityScene
-from ..scenario_store import load_scenario
+from ..prepared_scene import get_prepared_scene
 from ..surface_cells import SurfaceCell, build_surface_cells
 from ..trajectory import route_length_m, sample_route
 
@@ -59,18 +59,17 @@ def compute_exposure(request: ExposureRequest) -> dict:
     """Compute estimated visual exposure for one route and camera setting."""
 
     exposure_config = load_backend_config().exposure
-    scenario = load_scenario(request.scenario_id)
+    prepared_scene = get_prepared_scene(request.scenario_id)
+    scenario = prepared_scene.scenario
     origin = GeoPoint(**scenario["origin"])
     # Surface cells are the aggregation units. User preferences can raise their
     # sensitivity before raycasting, but geometry remains unchanged.
-    surface_cells = _apply_user_preferences(build_surface_cells(scenario), request)
-    surface_by_id = {surface.surface_id: surface for surface in surface_cells}
-    stats = {surface.surface_id: ExposureStats() for surface in surface_cells}
+    base_surface_cells = list(prepared_scene.surface_cells)
+    surface_cells = _apply_user_preferences(base_surface_cells, request)
 
     # Convert the planned route into discrete camera poses, then cast a
     # low-resolution camera ray grid from each pose.
     poses = sample_route(request.route, origin, step_m=exposure_config.route_sample_step_m)
-    visibility_scene = VisibilityScene.from_surface_cells(surface_cells)
     min_range_m = (
         request.camera.min_depth_m
         if request.camera.min_depth_m is not None
@@ -82,19 +81,20 @@ def compute_exposure(request: ExposureRequest) -> dict:
         else exposure_config.max_range_m
     )
 
-    for pose in poses:
-        rays = generate_camera_rays(pose, request.camera)
-        for hit in visibility_scene.cast(rays, max_range_m=max_range_m, min_range_m=min_range_m):
-            surface = surface_by_id[hit.surface_id]
-            # Open3D gives us first-hit geometry. The exposure model translates
-            # each valid hit into a weighted score for its semantic surface.
-            stats[hit.surface_id].update(
-                distance=hit.distance,
-                incidence=hit.incidence,
-                time_weight=pose.dt,
-                sensitivity=surface.sensitivity,
-                recognizability_d0_m=exposure_config.recognizability_d0_m,
-            )
+    rays = generate_camera_rays_batch(poses, request.camera)
+    hits = prepared_scene.visibility_scene.cast_arrays(
+        rays,
+        max_range_m=max_range_m,
+        min_range_m=min_range_m,
+    )
+    stats = _aggregate_hits(
+        hits.primitive_ids,
+        hits.distances,
+        hits.incidence,
+        prepared_scene.primitive_to_surface_index,
+        surface_cells,
+        exposure_config.recognizability_d0_m,
+    )
 
     exposure_surfaces = {"type": "FeatureCollection", "features": []}
     exposure_points = []
@@ -195,6 +195,42 @@ def compare_exposure(request: CompareRequest) -> dict:
             ),
         },
         "explanation": _comparison_explanation(before, after),
+    }
+
+
+def _aggregate_hits(
+    primitive_ids: np.ndarray,
+    distances: np.ndarray,
+    incidence: np.ndarray,
+    primitive_to_surface_index: np.ndarray,
+    surface_cells: list[SurfaceCell],
+    recognizability_d0_m: float,
+) -> dict[str, ExposureStats]:
+    """Aggregate vectorized ray hits into per-surface stats."""
+
+    surface_count = len(surface_cells)
+    if primitive_ids.size == 0:
+        return {surface.surface_id: ExposureStats() for surface in surface_cells}
+
+    surface_indices = primitive_to_surface_index[primitive_ids]
+    sensitivities = np.array([surface.sensitivity for surface in surface_cells], dtype=np.float32)
+    distance_weight = np.minimum(1.0, recognizability_d0_m / np.maximum(distances, 1e-6))
+    incidence_weight = np.clip(incidence, 0.0, 1.0)
+    exposure_weight = distance_weight * incidence_weight * sensitivities[surface_indices]
+
+    exposure_sum = np.bincount(surface_indices, weights=exposure_weight, minlength=surface_count)
+    visible_count = np.bincount(surface_indices, minlength=surface_count)
+    distance_sum = np.bincount(surface_indices, weights=distances, minlength=surface_count)
+    incidence_sum = np.bincount(surface_indices, weights=incidence_weight, minlength=surface_count)
+
+    return {
+        surface.surface_id: ExposureStats(
+            exposure=float(exposure_sum[index]),
+            visible_count=int(visible_count[index]),
+            distance_sum=float(distance_sum[index]),
+            incidence_sum=float(incidence_sum[index]),
+        )
+        for index, surface in enumerate(surface_cells)
     }
 
 

@@ -342,6 +342,11 @@ export function App() {
     }
 
     if (exposure && effectiveToggles.exposure) {
+      const affectedBuildings = scenario ? buildAffectedBuildingCollection(scenario, exposure) : emptyFeatureCollection();
+      const affectedSemanticAreas = scenario ? buildAffectedSemanticCollection(scenario, exposure) : emptyFeatureCollection();
+      const affectedPoints = exposure.exposure_points.filter((point) => point.exposure > 0);
+      const maxPointExposure = Math.max(1, ...affectedPoints.map((point) => point.exposure));
+
       nextLayers.push(
         new GeoJsonLayer({
           id: 'exposure-surfaces',
@@ -358,6 +363,60 @@ export function App() {
           pickable: true,
         }) as any,
       );
+
+      if (affectedBuildings.features.length > 0) {
+        nextLayers.push(
+          new GeoJsonLayer({
+            id: 'affected-buildings',
+            data: affectedBuildings,
+            extruded: true,
+            filled: true,
+            stroked: true,
+            getElevation: (feature: any) => Number(feature.properties.height_m ?? 0) + 2,
+            getFillColor: [255, 91, 48, 88],
+            getLineColor: [214, 38, 20, 255],
+            getLineWidth: 5,
+            lineWidthMinPixels: 2,
+            pickable: true,
+          }) as any,
+        );
+      }
+
+      if (affectedSemanticAreas.features.length > 0) {
+        nextLayers.push(
+          new GeoJsonLayer({
+            id: 'affected-semantic-areas',
+            data: affectedSemanticAreas,
+            filled: true,
+            stroked: true,
+            getFillColor: [178, 71, 171, 105],
+            getLineColor: [125, 35, 130, 255],
+            getLineWidth: 5,
+            lineWidthMinPixels: 2,
+            pickable: true,
+          }) as any,
+        );
+      }
+
+      if (affectedPoints.length > 0) {
+        nextLayers.push(
+          new ScatterplotLayer({
+            id: 'affected-exposure-halos',
+            data: affectedPoints,
+            getPosition: (point: { lon: number; lat: number }) => [point.lon, point.lat, 8],
+            getFillColor: (point: { exposure: number }) => exposureHaloColor(point.exposure, maxPointExposure),
+            getLineColor: [255, 255, 255, 230],
+            getRadius: (point: { exposure: number }) => exposureHaloRadius(point.exposure, maxPointExposure),
+            radiusUnits: 'pixels',
+            lineWidthMinPixels: 1,
+            stroked: true,
+            pickable: true,
+            onClick: (info: any) => {
+              if (info.object) setSelectedSurface(info.object);
+            },
+          }) as any,
+        );
+      }
     }
 
     if (effectiveToggles.preferences && preferencePolygons.length > 0) {
@@ -835,10 +894,12 @@ export function App() {
             <Metric label="Route Length" value={`${formatNumber(exposure.summary.route_length_m)} m`} />
             <Metric label="Task Coverage" value={`${Math.round(exposure.summary.estimated_task_coverage * 100)}%`} />
             <Metric label="Ray Count" value={formatNumber(exposure.summary.ray_count)} />
+            <Metric label="Affected Buildings" value={affectedBuildingCount(scenario, exposure).toString()} />
+            <Metric label="Affected Areas" value={affectedSemanticCount(scenario, exposure).toString()} />
             <MeaningNote
               copy={{
-                en: 'Higher exposure means more camera rays reached surfaces; sensitive exposure focuses on privacy-relevant areas.',
-                zh: '暴露值越高表示更多相机射线到达该区域；敏感暴露关注隐私相关区域。',
+                en: 'Orange outlines and halos show buildings and areas with non-zero estimated exposure.',
+                zh: '橙色轮廓和光环表示估计暴露值不为零的建筑和区域。',
               }}
             />
           </>
@@ -1078,6 +1139,69 @@ function affectedSurfaceCount(exposure: ExposureResponse | null): number {
   ).length;
 }
 
+function affectedBuildingCount(scenario: Scenario | null, exposure: ExposureResponse | null): number {
+  return buildAffectedBuildingCollection(scenario, exposure).features.length;
+}
+
+function affectedSemanticCount(scenario: Scenario | null, exposure: ExposureResponse | null): number {
+  return buildAffectedSemanticCollection(scenario, exposure).features.length;
+}
+
+function buildAffectedBuildingCollection(
+  scenario: Scenario | null,
+  exposure: ExposureResponse | null,
+): FeatureCollection {
+  if (!scenario || !exposure) return emptyFeatureCollection();
+  const exposedBuildingIds = exposedSourceIds(exposure, ['roof', 'facade']);
+  return {
+    type: 'FeatureCollection',
+    features: scenario.buildings.features
+      .filter((feature) => exposedBuildingIds.has(String(feature.properties.building_id ?? '')))
+      .map((feature) => ({
+        ...feature,
+        properties: {
+          ...feature.properties,
+          affected_exposure: exposedBuildingIds.get(String(feature.properties.building_id ?? '')) ?? 0,
+        },
+      })),
+  };
+}
+
+function buildAffectedSemanticCollection(
+  scenario: Scenario | null,
+  exposure: ExposureResponse | null,
+): FeatureCollection {
+  if (!scenario || !exposure) return emptyFeatureCollection();
+  const exposedSemanticIds = exposedSourceIds(exposure, ['ground']);
+  return {
+    type: 'FeatureCollection',
+    features: scenario.semantic_layers.features
+      .filter((feature) => exposedSemanticIds.has(String(feature.properties.surface_id ?? '')))
+      .map((feature) => ({
+        ...feature,
+        properties: {
+          ...feature.properties,
+          affected_exposure: exposedSemanticIds.get(String(feature.properties.surface_id ?? '')) ?? 0,
+        },
+      })),
+  };
+}
+
+function exposedSourceIds(exposure: ExposureResponse, surfaceTypes: string[]): Map<string, number> {
+  const ids = new Map<string, number>();
+  for (const feature of exposure.exposure_surfaces.features) {
+    const properties = feature.properties;
+    const exposureValue = Number(properties.exposure ?? 0);
+    const sourceId = String(properties.source_id ?? '');
+    const surfaceType = String(properties.surface_type ?? '');
+    if (exposureValue <= 0 || !sourceId || !surfaceTypes.includes(surfaceType)) {
+      continue;
+    }
+    ids.set(sourceId, (ids.get(sourceId) ?? 0) + exposureValue);
+  }
+  return ids;
+}
+
 function buildCameraFrustums(route: RoutePoint[], camera: CameraConfig): FeatureCollection {
   return {
     type: 'FeatureCollection',
@@ -1222,6 +1346,18 @@ function exposureColor(exposure: number): [number, number, number, number] {
   if (exposure < 25) return [249, 196, 91, 120];
   if (exposure < 75) return [230, 112, 55, 155];
   return [179, 42, 31, 190];
+}
+
+function exposureHaloColor(exposure: number, maxExposure: number): [number, number, number, number] {
+  const ratio = Math.max(0, Math.min(1, exposure / maxExposure));
+  if (ratio > 0.65) return [214, 38, 20, 185];
+  if (ratio > 0.25) return [239, 111, 45, 150];
+  return [255, 191, 74, 120];
+}
+
+function exposureHaloRadius(exposure: number, maxExposure: number): number {
+  const ratio = Math.sqrt(Math.max(0, Math.min(1, exposure / maxExposure)));
+  return 7 + ratio * 24;
 }
 
 function formatNumber(value: number): string {

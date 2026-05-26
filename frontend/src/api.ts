@@ -11,7 +11,7 @@ async function fetchJson(url: string, init?: RequestInit): Promise<unknown> {
   return response.json();
 }
 
-export async function loadScenario(scenarioId = 'residential_block_01'): Promise<Scenario> {
+export async function loadScenario(scenarioId = 'hong_kong_mong_kok_01'): Promise<Scenario> {
   const data = await fetchJson(`${API_BASE_URL}/api/scenarios/${scenarioId}`);
   return scenarioSchema.parse(data) as Scenario;
 }
