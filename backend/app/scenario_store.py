@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from .config import load_backend_config
+
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 SCENARIO_DIR = ROOT_DIR / "data" / "scenarios"
@@ -24,6 +26,7 @@ def load_scenario(scenario_id: str) -> dict:
     scenario = read_json(scenario_path / "scenario.json")
     scenario["buildings"] = read_json(scenario_path / "buildings.geojson")
     scenario["semantic_layers"] = read_json(scenario_path / "semantic_layers.geojson")
+    _attach_camera_profiles(scenario)
     return scenario
 
 
@@ -52,3 +55,20 @@ def load_prepared_mesh(scenario_id: str) -> dict:
         "origin": scenario["origin"],
         "mesh": mesh,
     }
+
+
+def _attach_camera_profiles(scenario: dict) -> None:
+    """Attach YAML camera presets to the frontend scenario payload."""
+
+    profiles_config = load_backend_config().camera_profiles
+    profiles = profiles_config["profiles"]
+    default_profile_id = profiles_config["default_profile_id"]
+    scenario["camera_profiles"] = profiles
+    scenario["default_camera_profile_id"] = default_profile_id
+
+    default_profile = next(
+        (profile for profile in profiles if profile["id"] == default_profile_id),
+        None,
+    )
+    if default_profile:
+        scenario["camera"] = default_profile["camera"]

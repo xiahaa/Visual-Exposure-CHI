@@ -8,7 +8,54 @@ export const scenarioFixture = {
     gimbal_pitch_deg: -45,
     ray_width: 80,
     ray_height: 45,
+    min_depth_m: 0,
+    max_depth_m: 250,
   },
+  camera_profiles: [
+    {
+      id: 'wide_survey',
+      label: 'Wide Survey',
+      description: 'Wider context view for public notice and broad situational awareness.',
+      camera: {
+        hfov_deg: 92,
+        vfov_deg: 58,
+        gimbal_pitch_deg: -42,
+        ray_width: 72,
+        ray_height: 40,
+        min_depth_m: 0,
+        max_depth_m: 220,
+      },
+    },
+    {
+      id: 'inspection_balanced',
+      label: 'Balanced Inspection',
+      description: 'Default study camera balancing coverage, detail, and interactive speed.',
+      camera: {
+        hfov_deg: 78,
+        vfov_deg: 50,
+        gimbal_pitch_deg: -45,
+        ray_width: 80,
+        ray_height: 45,
+        min_depth_m: 0,
+        max_depth_m: 250,
+      },
+    },
+    {
+      id: 'focused_detail',
+      label: 'Focused Detail',
+      description: 'Narrower detail view for closer inspection with a shorter effective depth.',
+      camera: {
+        hfov_deg: 56,
+        vfov_deg: 36,
+        gimbal_pitch_deg: -50,
+        ray_width: 120,
+        ray_height: 68,
+        min_depth_m: 5,
+        max_depth_m: 140,
+      },
+    },
+  ],
+  default_camera_profile_id: 'inspection_balanced',
   default_route: [
     { lon: 113.9297, lat: 22.5398, alt: 80, yaw: 45 },
     { lon: 113.9308, lat: 22.5407, alt: 80, yaw: 45 },
@@ -103,6 +150,7 @@ export const exposureFixture = {
     estimated_task_coverage: 0.91,
     engine: 'open3d_raycasting',
     config: {
+      min_range_m: 0,
       max_range_m: 250,
       recognizability_d0_m: 80,
       route_sample_step_m: 5,
@@ -110,3 +158,17 @@ export const exposureFixture = {
   },
 };
 
+export const compareFixture = {
+  before: exposureFixture.summary,
+  after: {
+    ...exposureFixture.summary,
+    total_exposure: 150,
+    sensitive_exposure: 55,
+  },
+  delta: {
+    exposure_reduction_percent: -30.33,
+    route_length_increase_percent: 0,
+    coverage_loss_percent: 0,
+  },
+  explanation: 'The modified condition increases estimated sensitive visual exposure based on first-hit raycasting.',
+};

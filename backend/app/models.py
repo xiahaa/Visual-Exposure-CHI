@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class RoutePoint(BaseModel):
@@ -23,6 +23,22 @@ class CameraConfig(BaseModel):
     # times. Higher values mean better approximation but more Open3D queries.
     ray_width: int = Field(default=80, ge=1, le=640)
     ray_height: int = Field(default=45, ge=1, le=360)
+    # Optional effective visible depth. These are interaction-level controls for
+    # presets, not physical camera clipping planes.
+    min_depth_m: float | None = Field(default=None, ge=0)
+    max_depth_m: float | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def validate_depth_range(self) -> "CameraConfig":
+        """Reject impossible camera depth ranges before raycasting."""
+
+        if (
+            self.min_depth_m is not None
+            and self.max_depth_m is not None
+            and self.min_depth_m >= self.max_depth_m
+        ):
+            raise ValueError("camera min_depth_m must be less than max_depth_m")
+        return self
 
 
 class UserPreferences(BaseModel):

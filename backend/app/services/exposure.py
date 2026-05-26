@@ -71,10 +71,20 @@ def compute_exposure(request: ExposureRequest) -> dict:
     # low-resolution camera ray grid from each pose.
     poses = sample_route(request.route, origin, step_m=exposure_config.route_sample_step_m)
     visibility_scene = VisibilityScene.from_surface_cells(surface_cells)
+    min_range_m = (
+        request.camera.min_depth_m
+        if request.camera.min_depth_m is not None
+        else exposure_config.min_range_m
+    )
+    max_range_m = (
+        request.camera.max_depth_m
+        if request.camera.max_depth_m is not None
+        else exposure_config.max_range_m
+    )
 
     for pose in poses:
         rays = generate_camera_rays(pose, request.camera)
-        for hit in visibility_scene.cast(rays, max_range_m=exposure_config.max_range_m):
+        for hit in visibility_scene.cast(rays, max_range_m=max_range_m, min_range_m=min_range_m):
             surface = surface_by_id[hit.surface_id]
             # Open3D gives us first-hit geometry. The exposure model translates
             # each valid hit into a weighted score for its semantic surface.
@@ -155,7 +165,8 @@ def compute_exposure(request: ExposureRequest) -> dict:
             # Echo the active engine settings so experiment runs can be
             # reproduced from logs without guessing which YAML was used.
             "config": {
-                "max_range_m": exposure_config.max_range_m,
+                "min_range_m": min_range_m,
+                "max_range_m": max_range_m,
                 "recognizability_d0_m": exposure_config.recognizability_d0_m,
                 "route_sample_step_m": exposure_config.route_sample_step_m,
             },
@@ -240,11 +251,14 @@ def _geojson_shapes(geojson: dict | None) -> list:
 
     if not geojson:
         return []
-    if geojson.get("type") == "FeatureCollection":
-        return [shape(feature["geometry"]) for feature in geojson.get("features", [])]
-    if geojson.get("type") == "Feature":
-        return [shape(geojson["geometry"])]
-    return [shape(geojson)]
+    try:
+        if geojson.get("type") == "FeatureCollection":
+            return [shape(feature["geometry"]) for feature in geojson.get("features", [])]
+        if geojson.get("type") == "Feature":
+            return [shape(geojson["geometry"])]
+        return [shape(geojson)]
+    except Exception as exc:
+        raise ValueError("Invalid user preference GeoJSON.") from exc
 
 
 def _estimate_task_coverage(stats: dict[str, ExposureStats], surface_cells: list[SurfaceCell]) -> float:

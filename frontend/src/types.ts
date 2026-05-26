@@ -13,6 +13,15 @@ export type CameraConfig = {
   gimbal_pitch_deg: number;
   ray_width: number;
   ray_height: number;
+  min_depth_m?: number;
+  max_depth_m?: number;
+};
+
+export type CameraProfile = {
+  id: string;
+  label: string;
+  description: string;
+  camera: CameraConfig;
 };
 
 export type Scenario = {
@@ -20,6 +29,8 @@ export type Scenario = {
   name: string;
   origin: { lon: number; lat: number; alt: number };
   camera: CameraConfig;
+  camera_profiles: CameraProfile[];
+  default_camera_profile_id: string;
   default_route: RoutePoint[];
   summary: { task: string; notice: string };
   buildings: FeatureCollection;
@@ -36,6 +47,7 @@ export type ExposureSummary = {
   estimated_task_coverage: number;
   engine: string;
   config: {
+    min_range_m?: number;
     max_range_m: number;
     recognizability_d0_m: number;
     route_sample_step_m: number;
@@ -55,6 +67,36 @@ export type ExposureResponse = {
   summary: ExposureSummary;
 };
 
+export type UserPreferences = {
+  do_not_capture?: FeatureCollection | null;
+  sensitive_areas?: FeatureCollection | null;
+  acceptable_conditions: Array<Record<string, unknown>>;
+};
+
+export type CompareResponse = {
+  before: ExposureSummary;
+  after: ExposureSummary;
+  delta: {
+    exposure_reduction_percent: number;
+    route_length_increase_percent: number;
+    coverage_loss_percent: number;
+  };
+  explanation: string;
+};
+
+export type PreferenceKind = 'sensitive_area' | 'do_not_capture';
+
+export type StudyCondition = 'basic_notice' | 'camera_footprint' | 'visual_exposure';
+
+export type LayerToggles = {
+  buildings: boolean;
+  semanticRegions: boolean;
+  uav: boolean;
+  frustum: boolean;
+  exposure: boolean;
+  preferences: boolean;
+};
+
 export type UploadParseResult = {
   route: RoutePoint[];
   sourceFormat: 'GeoJSON' | 'WKT';
@@ -66,4 +108,3 @@ export type AppError = {
 };
 
 export type RouteGeometry = Geometry;
-

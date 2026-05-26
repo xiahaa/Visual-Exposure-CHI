@@ -1,5 +1,42 @@
 exposure:
+  min_range_m: 0.0
   max_range_m: 250.0
   recognizability_d0_m: 80.0
   route_sample_step_m: 5.0
 
+camera_profiles:
+  default_profile_id: inspection_balanced
+  profiles:
+    - id: wide_survey
+      label: Wide Survey
+      description: Wider context view for public notice and broad situational awareness.
+      camera:
+        hfov_deg: 92.0
+        vfov_deg: 58.0
+        gimbal_pitch_deg: -42.0
+        ray_width: 72
+        ray_height: 40
+        min_depth_m: 0.0
+        max_depth_m: 220.0
+    - id: inspection_balanced
+      label: Balanced Inspection
+      description: Default study camera balancing coverage, detail, and interactive speed.
+      camera:
+        hfov_deg: 78.0
+        vfov_deg: 50.0
+        gimbal_pitch_deg: -45.0
+        ray_width: 80
+        ray_height: 45
+        min_depth_m: 0.0
+        max_depth_m: 250.0
+    - id: focused_detail
+      label: Focused Detail
+      description: Narrower detail view for closer inspection with a shorter effective depth.
+      camera:
+        hfov_deg: 56.0
+        vfov_deg: 36.0
+        gimbal_pitch_deg: -50.0
+        ray_width: 120
+        ray_height: 68
+        min_depth_m: 5.0
+        max_depth_m: 140.0

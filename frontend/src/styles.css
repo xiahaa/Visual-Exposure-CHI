@@ -100,6 +100,72 @@ h1 {
   line-height: 1.4;
 }
 
+.bilingual-text {
+  display: grid;
+  gap: 3px;
+}
+
+.bilingual-text small {
+  color: #657982;
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.step-guide {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #d9e2e5;
+  background: #fff;
+}
+
+.step-guide summary {
+  color: #31434b;
+  font-size: 0.88rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.step-guide ol {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding-left: 22px;
+}
+
+.step-guide li {
+  color: #30434b;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.context-tip {
+  margin-top: 8px;
+  padding: 8px 9px;
+  border-left: 3px solid #7aa7c7;
+  background: #f3f8fb;
+  color: #31434b;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.meaning-note {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #d9e2e5;
+  background: #f8fafb;
+  color: #40535b;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.meaning-note strong {
+  color: #31434b;
+  font-size: 0.78rem;
+}
+
 .status-dot {
   width: 10px;
   height: 10px;
@@ -147,6 +213,73 @@ h1 {
   margin-top: 14px;
 }
 
+.camera-presets {
+  margin-top: 14px;
+  padding: 10px;
+  border: 1px solid #d9e2e5;
+  background: #f8fafb;
+}
+
+.camera-presets-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #31434b;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.camera-presets-header strong {
+  color: #1b5f8f;
+}
+
+.preset-grid {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.preset-card {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #cbd8dd;
+  background: #fff;
+  color: #30434b;
+  text-align: left;
+  cursor: pointer;
+}
+
+.preset-card.active {
+  border-color: #1b5f8f;
+  background: #eef7fb;
+}
+
+.preset-card strong {
+  font-size: 0.86rem;
+}
+
+.preset-card span {
+  color: #5b6d75;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.advanced-camera {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #d9e2e5;
+  background: #fff;
+}
+
+.advanced-camera summary {
+  color: #31434b;
+  font-size: 0.84rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .number-field {
   margin: 0;
 }
@@ -187,6 +320,93 @@ h1 {
   cursor: not-allowed;
 }
 
+.secondary-action {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 14px;
+  border: 1px solid #1b5f8f;
+  background: #eef7fb;
+  color: #174f78;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.secondary-action:disabled {
+  border-color: #b8c6cc;
+  color: #7c8d94;
+  cursor: not-allowed;
+}
+
+.segmented,
+.tool-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.segmented button,
+.tool-button {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid #cbd8dd;
+  background: #fff;
+  color: #30434b;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.segmented button.active,
+.tool-button.active {
+  border-color: #1b5f8f;
+  background: #1b5f8f;
+  color: #fff;
+}
+
+.tool-button.danger.active {
+  border-color: #a53122;
+  background: #a53122;
+}
+
+.tool-button:disabled {
+  color: #8b9aa0;
+  cursor: not-allowed;
+}
+
+.toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.toggle-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #d9e2e5;
+  background: #fff;
+  color: #344850;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.preference-tools {
+  margin-top: 14px;
+  padding: 10px;
+  border: 1px solid #d9e2e5;
+  background: #f8fafb;
+}
+
+.route-tools {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #d9e2e5;
+  background: #fbfcfd;
+}
+
 .metric-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -213,6 +433,43 @@ h1 {
   margin-top: 4px;
   overflow-wrap: anywhere;
   font-size: 1rem;
+}
+
+.inspection-panel {
+  position: absolute;
+  z-index: 3;
+  right: 18px;
+  top: 18px;
+  width: min(280px, calc(100vw - 36px));
+  padding: 12px;
+  border: 1px solid rgba(27, 43, 51, 0.16);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 18px 48px rgba(27, 43, 51, 0.16);
+}
+
+.inspection-panel button {
+  float: right;
+  border: 1px solid #cbd8dd;
+  background: #fff;
+  color: #30434b;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.inspection-panel h2 {
+  margin: 4px 0 10px;
+  font-size: 1rem;
+}
+
+.comparison-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #d9e2e5;
+  background: #fff;
+  color: #40535b;
+  font-size: 0.86rem;
+  line-height: 1.4;
 }
 
 @media (max-width: 840px) {

@@ -12,6 +12,9 @@ DEFAULT_CONFIG_PATH = ROOT_DIR / "config" / "backend.yaml"
 class ExposureEngineConfig(BaseModel):
     """Tunable parameters for the geometric visibility engine."""
 
+    # Minimum ray distance included in exposure aggregation. This supports
+    # preset-level near clipping while keeping legacy requests unchanged.
+    min_range_m: float = Field(default=0.0, ge=0)
     # Maximum ray distance included in exposure aggregation. This prevents
     # far-away incidental hits from becoming privacy-relevant.
     max_range_m: float = Field(gt=0)
@@ -26,6 +29,7 @@ class BackendConfig(BaseModel):
     """Root backend configuration loaded from YAML."""
 
     exposure: ExposureEngineConfig
+    camera_profiles: dict
 
 
 @lru_cache(maxsize=1)

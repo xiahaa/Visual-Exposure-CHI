@@ -39,6 +39,21 @@ export const cameraConfigSchema = z.object({
   gimbal_pitch_deg: z.number().gte(-180).lte(180),
   ray_width: z.number().int().gte(1).lte(640),
   ray_height: z.number().int().gte(1).lte(360),
+  min_depth_m: z.number().gte(0).optional(),
+  max_depth_m: z.number().gt(0).optional(),
+}).refine(
+  (camera) =>
+    camera.min_depth_m === undefined
+    || camera.max_depth_m === undefined
+    || camera.min_depth_m < camera.max_depth_m,
+  'min_depth_m must be less than max_depth_m',
+);
+
+const cameraProfileSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string(),
+  camera: cameraConfigSchema,
 });
 
 export const scenarioSchema = z.object({
@@ -46,6 +61,8 @@ export const scenarioSchema = z.object({
   name: z.string(),
   origin: z.object({ lon: z.number(), lat: z.number(), alt: z.number() }),
   camera: cameraConfigSchema,
+  camera_profiles: z.array(cameraProfileSchema).min(1),
+  default_camera_profile_id: z.string(),
   default_route: z.array(routePointSchema).min(2),
   summary: z.object({ task: z.string(), notice: z.string() }),
   buildings: featureCollectionSchema,
@@ -62,6 +79,7 @@ export const exposureSummarySchema = z.object({
   estimated_task_coverage: z.number(),
   engine: z.string(),
   config: z.object({
+    min_range_m: z.number().optional(),
     max_range_m: z.number(),
     recognizability_d0_m: z.number(),
     route_sample_step_m: z.number(),
@@ -81,6 +99,17 @@ export const exposureResponseSchema = z.object({
     }),
   ),
   summary: exposureSummarySchema,
+});
+
+export const compareResponseSchema = z.object({
+  before: exposureSummarySchema,
+  after: exposureSummarySchema,
+  delta: z.object({
+    exposure_reduction_percent: z.number(),
+    route_length_increase_percent: z.number(),
+    coverage_loss_percent: z.number(),
+  }),
+  explanation: z.string(),
 });
 
 export const routeUploadGeoJsonSchema = z.union([
@@ -111,4 +140,3 @@ export const routeUploadGeoJsonSchema = z.union([
 
 export type ScenarioSchema = z.infer<typeof scenarioSchema>;
 export type ExposureResponseSchema = z.infer<typeof exposureResponseSchema>;
-

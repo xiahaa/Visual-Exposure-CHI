@@ -66,6 +66,8 @@ def post_compute_exposure(request: ExposureRequest) -> dict:
         return compute_exposure(request)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Scenario not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/exposure/compare")
@@ -76,3 +78,5 @@ def post_compare_exposure(request: CompareRequest) -> dict:
         return compare_exposure(request)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Scenario not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

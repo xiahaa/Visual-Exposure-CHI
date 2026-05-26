@@ -40,7 +40,7 @@ class VisibilityScene:
 
         return cls(build_triangle_mesh(surface_cells))
 
-    def cast(self, rays: np.ndarray, max_range_m: float) -> list[RayHit]:
+    def cast(self, rays: np.ndarray, max_range_m: float, min_range_m: float = 0.0) -> list[RayHit]:
         """Cast rays and return valid first hits within the configured range."""
 
         if rays.size == 0:
@@ -58,7 +58,12 @@ class VisibilityScene:
         for index, distance in enumerate(t_hit):
             # Open3D uses inf for misses. We also discard zero/negative and
             # beyond-range hits so distant background surfaces do not dominate.
-            if not np.isfinite(distance) or distance <= 0.0 or distance > max_range_m:
+            if (
+                not np.isfinite(distance)
+                or distance <= 0.0
+                or distance < min_range_m
+                or distance > max_range_m
+            ):
                 continue
 
             primitive_id = int(primitive_ids[index])
