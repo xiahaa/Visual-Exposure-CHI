@@ -36,5 +36,6 @@ annotate, and reason about it.
 3. Add local ENU coordinate conversion utilities. Done.
 4. Build a 2.5D block visibility scene. Done.
 5. Compute surface-level visual exposure. Done for the first Open3D raycasting pass.
-6. Render buildings, route, exposure cells, and annotations in deck.gl.
-7. Add before/after comparison and experiment logging.
+6. Render buildings, route, exposure cells, and annotations in deck.gl. Done.
+7. Add before/after comparison and experiment logging. Done.
+8. Add candidate-based privacy option generation for suggested route/camera alternatives. Done.

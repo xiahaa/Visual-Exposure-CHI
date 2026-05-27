@@ -77,6 +77,9 @@ describe('App', () => {
     expect(screen.getByText('Default route loaded from scenario.')).toBeInTheDocument();
     expect(screen.getByText(/User Guide/)).toBeInTheDocument();
     expect(screen.getByText('Review the prepared route before computing estimated visual exposure.')).toBeInTheDocument();
+    expect(screen.getByText('Inspect exposed surfaces, then show preference-weighted exposure for marked concerns.')).toBeInTheDocument();
+    expect(screen.getByText('Generate and preview suggested alternatives to understand privacy-task trade-offs.')).toBeInTheDocument();
+    expect(screen.queryByText('Compare before/after results to understand the privacy-task trade-off.')).not.toBeInTheDocument();
     expect(screen.getByText('Study role: participant')).toBeInTheDocument();
     expect(screen.queryByLabelText('Route file')).not.toBeInTheDocument();
     expect(screen.getByText('Camera Mode')).toBeInTheDocument();
@@ -293,6 +296,44 @@ describe('App', () => {
     expect(
       screen.getByText('Applied suggested alternative: Privacy-first. Recompute exposure to verify the final route at full fidelity.'),
     ).toBeInTheDocument();
+  });
+
+  it('disables privacy option generation until a preference polygon exists', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse(scenarioFixture));
+
+    render(<App />);
+    await screen.findByText('Residential Block Roof Inspection');
+
+    expect(screen.getByText('Mark at least one Sensitive or Do Not Capture area before generating privacy options.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Generate Privacy Options' })).toBeDisabled();
+  });
+
+  it('uses candidate-generation language when privacy option generation fails', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse(scenarioFixture))
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: 'Server Error',
+        json: async () => ({ detail: 'boom' }),
+      } as Response);
+
+    render(<App />);
+    await screen.findByText('Residential Block Roof Inspection');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sensitive' }));
+    await userEvent.click(screen.getByTestId('deckgl'));
+    await userEvent.click(screen.getByTestId('deckgl'));
+    await userEvent.click(screen.getByTestId('deckgl'));
+    await userEvent.click(screen.getByRole('button', { name: 'Close Polygon' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Generate Privacy Options' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    expect(await screen.findByText('Privacy option generation failed')).toBeInTheDocument();
+    expect(screen.queryByText('Planning optimization failed')).not.toBeInTheDocument();
   });
 
   it('switches study conditions and hides visual-exposure controls in C1', async () => {

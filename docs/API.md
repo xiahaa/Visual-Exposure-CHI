@@ -104,7 +104,7 @@ Request:
   "planner_config": {
     "evaluation_ray_width": 32,
     "evaluation_ray_height": 18,
-    "max_route_increase_percent": 25,
+    "max_route_length_increase_percent": 25,
     "min_task_coverage": 0.75
   }
 }
@@ -123,18 +123,19 @@ Response:
       "modified_camera": {},
       "summary": {},
       "delta": {
-        "exposure_reduction_percent": 38.4,
         "sensitive_exposure_reduction_percent": 61.2,
+        "total_exposure_reduction_percent": 38.4,
         "route_length_increase_percent": 8.5,
         "coverage_loss_percent": 4.0
       },
       "objective_terms": {
         "privacy": 0.31,
-        "length": 0.08,
+        "route_length": 0.08,
         "smoothness": 0.02,
         "altitude": 0.12,
         "gimbal": 0.05,
-        "task": 0.96
+        "task": 0.96,
+        "objective": -12.4
       },
       "explanation": "Suggested alternative evaluated against the marked privacy areas."
     }

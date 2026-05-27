@@ -89,19 +89,19 @@ const GUIDE_STEPS: Record<StudyCondition, BilingualCopy[]> = {
   visual_exposure: [
     {
       en: 'Review the prepared route before computing estimated visual exposure.',
-      zh: '通过上传文件或在地图上选点来准备航线。',
+      zh: '查看已准备好的航线，然后计算估计的视觉暴露。',
     },
     {
       en: 'Choose a camera mode, then compute estimated visual exposure.',
       zh: '选择相机模式，然后计算估计的视觉暴露。',
     },
     {
-      en: 'Inspect exposed surfaces and mark privacy-sensitive places.',
-      zh: '查看暴露面片，并标注隐私敏感区域。',
+      en: 'Inspect exposed surfaces, then show preference-weighted exposure for marked concerns.',
+      zh: '查看暴露面片，并用偏好加权暴露理解已标注的关注区域。',
     },
     {
-      en: 'Compare before/after results to understand the privacy-task trade-off.',
-      zh: '比较前后结果，理解隐私与任务之间的取舍。',
+      en: 'Generate and preview suggested alternatives to understand privacy-task trade-offs.',
+      zh: '生成并预览建议替代方案，理解隐私与任务之间的取舍。',
     },
   ],
 };
@@ -133,7 +133,7 @@ const COMPARE_TIP: BilingualCopy = {
 
 const PLANNING_TIP: BilingualCopy = {
   en: 'Generate suggested route, altitude, and camera alternatives for the marked privacy areas.',
-  zh: '优化会为已标注的隐私区域提出航线、高度和相机替代方案。',
+  zh: '系统会为已标注的隐私区域生成航线、高度和相机替代方案。',
 };
 
 function getStudyRole(): StudyRole {
@@ -324,7 +324,7 @@ export function App() {
       setError(null);
     } catch (reason) {
       setError({
-        title: 'Planning optimization failed',
+        title: 'Privacy option generation failed',
         message: reason instanceof Error ? reason.message : String(reason),
       });
     } finally {
@@ -1036,9 +1036,13 @@ export function App() {
               {isComparing ? 'Reweighting...' : 'Show Preference-Weighted Exposure'}
             </button>
             <ContextTip copy={PLANNING_TIP} />
+            {preferencePolygons.length === 0 && (
+              <p className="hint">Mark at least one Sensitive or Do Not Capture area before generating privacy options.</p>
+            )}
             <button
               className="primary-action planning-action"
               type="button"
+              title={preferencePolygons.length === 0 ? 'Mark at least one privacy area first.' : undefined}
               disabled={!scenario || !camera || route.length < 2 || preferencePolygons.length === 0 || isOptimizing}
               onClick={() => void handleOptimizePlanning()}
             >
