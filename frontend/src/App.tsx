@@ -11,6 +11,7 @@ import {
   type PreferencePolygon,
 } from './preferences';
 import { parseRouteFileContent } from './routeParser';
+import { cameraSnapshot, createStudyLogEvent, routeSnapshot, studyLogToJsonl, type StudyLogEvent } from './studyLogger';
 import type {
   AppError,
   CameraConfig,
@@ -125,12 +126,12 @@ const PREFERENCE_TIP: BilingualCopy = {
 };
 
 const COMPARE_TIP: BilingualCopy = {
-  en: 'Compare shows how user-marked preferences change sensitive exposure.',
+  en: 'Preference-weighted exposure re-scores the current route using your marked concerns; it does not change the route.',
   zh: '对比结果展示用户标注的偏好如何改变敏感暴露。',
 };
 
 const PLANNING_TIP: BilingualCopy = {
-  en: 'Optimize proposes route, altitude, and camera alternatives that respond to marked privacy areas.',
+  en: 'Generate suggested route, altitude, and camera alternatives for the marked privacy areas.',
   zh: '优化会为已标注的隐私区域提出航线、高度和相机替代方案。',
 };
 
@@ -158,6 +159,25 @@ export function App() {
   const [activeCameraProfileId, setActiveCameraProfileId] = useState('custom');
   const [advancedCameraOpen, setAdvancedCameraOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(true);
+  const [studyLog, setStudyLog] = useState<StudyLogEvent[]>([]);
+
+  const logEvent = useCallback((event: string, payload: Record<string, unknown> = {}, summary?: Record<string, unknown>) => {
+    setStudyLog((current) => [
+      ...current,
+      createStudyLogEvent({
+        event,
+        scenario_id: scenario?.scenario_id,
+        condition: studyCondition,
+        camera_profile_id: activeCameraProfileId,
+        ...routeSnapshot(route),
+        payload: {
+          ...payload,
+          camera: cameraSnapshot(camera),
+        },
+        summary,
+      }),
+    ]);
+  }, [activeCameraProfileId, camera, route, scenario?.scenario_id, studyCondition]);
 
   useEffect(() => {
     let active = true;
@@ -198,6 +218,7 @@ export function App() {
       setPreviewPlanningOptionId(null);
       setInteractionMode('inspect');
       setUploadMessage(`${parsed.sourceFormat} route loaded: ${parsed.route.length} waypoints.`);
+      logEvent('route_upload', { source_format: parsed.sourceFormat, waypoint_count: parsed.route.length });
       setError(null);
     } catch (reason) {
       setError({
@@ -205,7 +226,7 @@ export function App() {
         message: reason instanceof Error ? reason.message : String(reason),
       });
     }
-  }, []);
+  }, [logEvent]);
 
   const handleCompute = useCallback(async () => {
     if (!scenario || !camera) return;
@@ -221,6 +242,7 @@ export function App() {
       setComparison(null);
       setPlanning(null);
       setPreviewPlanningOptionId(null);
+      logEvent('compute_exposure', {}, response.summary);
       setError(null);
     } catch (reason) {
       setError({
@@ -230,7 +252,7 @@ export function App() {
     } finally {
       setComputing(false);
     }
-  }, [camera, preferencePolygons, route, scenario]);
+  }, [camera, logEvent, preferencePolygons, route, scenario]);
 
   const handleCompare = useCallback(async () => {
     if (!scenario || !camera) return;
@@ -245,6 +267,7 @@ export function App() {
       setComparison(response);
       setPlanning(null);
       setPreviewPlanningOptionId(null);
+      logEvent('preference_weighted_exposure', {}, response.after);
       setError(null);
     } catch (reason) {
       setError({
@@ -254,7 +277,7 @@ export function App() {
     } finally {
       setComparing(false);
     }
-  }, [camera, preferencePolygons, route, scenario]);
+  }, [camera, logEvent, preferencePolygons, route, scenario]);
 
   const handleOptimizePlanning = useCallback(async () => {
     if (!scenario || !camera) return;
@@ -271,9 +294,13 @@ export function App() {
       setComparison(null);
       setUploadMessage(
         response.options.length > 0
-          ? `Planning generated: previewing ${response.options[0].label}.`
-          : 'Planning finished, but no feasible alternative was returned.',
+          ? `Suggested alternatives generated: previewing ${response.options[0].label}.`
+          : 'Suggestion generation finished, but no feasible alternative was returned.',
       );
+      logEvent('generate_privacy_options', {
+        option_count: response.options.length,
+        first_option_id: response.options[0]?.id,
+      }, response.baseline_summary);
       setError(null);
     } catch (reason) {
       setError({
@@ -283,7 +310,7 @@ export function App() {
     } finally {
       setOptimizing(false);
     }
-  }, [camera, preferencePolygons, route, scenario]);
+  }, [camera, logEvent, preferencePolygons, route, scenario]);
 
   const applyPlanningOption = useCallback((option: PlanningOption) => {
     setRoute(option.modified_route);
@@ -293,8 +320,20 @@ export function App() {
     setComparison(null);
     setPlanning(null);
     setPreviewPlanningOptionId(null);
-    setUploadMessage(`Applied planning option: ${option.label}.`);
-  }, []);
+    setUploadMessage(`Applied suggested alternative: ${option.label}. Recompute exposure to verify the final route at full fidelity.`);
+    logEvent('apply_planning_option', { option_id: option.id, label: option.label, strategy: option.strategy }, option.summary);
+  }, [logEvent]);
+
+  const downloadStudyLog = useCallback(() => {
+    const jsonl = studyLogToJsonl(studyLog);
+    const blob = new Blob([jsonl ? `${jsonl}\n` : ''], { type: 'application/x-ndjson' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `chi-study-log-${scenario?.scenario_id ?? 'scenario'}-${Date.now()}.jsonl`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [scenario?.scenario_id, studyLog]);
 
   const handleMapClick = useCallback((info: any) => {
     if (!info.coordinate) return;
@@ -306,6 +345,7 @@ export function App() {
       setComparison(null);
       setPlanning(null);
       setPreviewPlanningOptionId(null);
+      logEvent('manual_route_add_waypoint', { lon, lat });
       setUploadMessage('Manual route in progress. Click the map to add more waypoints, then finish the route.');
       return;
     }
@@ -318,9 +358,10 @@ export function App() {
 
     if (info.object?.properties?.surface_id) {
       setSelectedSurface(info.object.properties);
+      logEvent('surface_inspect', { surface_id: info.object.properties.surface_id });
       return;
     }
-  }, [interactionMode, scenario, studyCondition]);
+  }, [interactionMode, logEvent, scenario, studyCondition]);
 
   const closePreferencePolygon = useCallback(() => {
     try {
@@ -336,6 +377,7 @@ export function App() {
       setComparison(null);
       setPlanning(null);
       setPreviewPlanningOptionId(null);
+      logEvent('preference_polygon_close', { kind: drawKind, vertex_count: draftPolygon.length });
       setError(null);
     } catch (reason) {
       setError({
@@ -343,7 +385,7 @@ export function App() {
         message: reason instanceof Error ? reason.message : String(reason),
       });
     }
-  }, [draftPolygon, drawKind, preferencePolygons.length]);
+  }, [draftPolygon, drawKind, logEvent, preferencePolygons.length]);
 
   const previewPlanningOption = planning?.options.find((option) => option.id === previewPlanningOptionId) ?? null;
 
@@ -734,12 +776,19 @@ export function App() {
               key={condition}
               className={studyCondition === condition ? 'active' : ''}
               type="button"
-              onClick={() => setStudyCondition(condition as StudyCondition)}
+              onClick={() => {
+                setStudyCondition(condition as StudyCondition);
+                logEvent('condition_switch', { next_condition: condition });
+              }}
             >
               {label}
             </button>
           ))}
         </div>
+
+        <button className="log-download" type="button" onClick={downloadStudyLog}>
+          Download Study Log ({studyLog.length})
+        </button>
 
         {error && (
           <div className="error-box" role="alert">
@@ -748,6 +797,8 @@ export function App() {
           </div>
         )}
 
+        {studyCondition !== 'basic_notice' && (
+          <>
         <label className="field">
           <span>Route file</span>
           <input
@@ -774,6 +825,7 @@ export function App() {
                 setDraftPolygon([]);
                 setInteractionMode('route');
                 setUploadMessage('Manual route mode: click the map to place waypoints.');
+                logEvent('manual_route_start');
               }}
             >
               New Manual Route
@@ -789,6 +841,7 @@ export function App() {
                     ? `Manual route ready: ${route.length} waypoints.`
                     : 'Manual route needs at least two waypoints before exposure can be computed.',
                 );
+                logEvent('manual_route_finish', { waypoint_count: route.length });
               }}
             >
               Finish Route
@@ -807,6 +860,7 @@ export function App() {
                 setPreviewPlanningOptionId(null);
                 setInteractionMode('inspect');
                 setUploadMessage('Route cleared. Upload a route or create a new manual route.');
+                logEvent('route_clear');
               }}
             >
               Clear Route
@@ -823,6 +877,7 @@ export function App() {
                 setPreviewPlanningOptionId(null);
                 setInteractionMode('inspect');
                 setUploadMessage('Default route restored from scenario.');
+                logEvent('route_restore_default');
               }}
             >
               Restore Default
@@ -834,8 +889,10 @@ export function App() {
               : 'Manual waypoint selection uses the same route model as uploaded WKT and GeoJSON files.'}
           </p>
         </div>
+          </>
+        )}
 
-        {studyCondition !== 'basic_notice' && (
+        {studyCondition === 'visual_exposure' && (
           <>
         <CameraProfilePicker
           profiles={scenario?.camera_profiles ?? []}
@@ -847,6 +904,7 @@ export function App() {
             setComparison(null);
             setPlanning(null);
             setPreviewPlanningOptionId(null);
+            logEvent('camera_profile_select', { profile_id: profile.id });
           }}
         />
         <ContextTip copy={CAMERA_TIP} />
@@ -875,9 +933,10 @@ export function App() {
               <input
                 type="checkbox"
                 checked={layerToggles[key as keyof LayerToggles]}
-                onChange={(event) =>
-                  setLayerToggles((current) => ({ ...current, [key]: event.target.checked }))
-                }
+                onChange={(event) => {
+                  setLayerToggles((current) => ({ ...current, [key]: event.target.checked }));
+                  logEvent('layer_toggle', { layer: key, checked: event.target.checked });
+                }}
               />
               <span>{toggleLabel(key as keyof LayerToggles)}</span>
             </label>
@@ -936,6 +995,7 @@ export function App() {
                 setComparison(null);
                 setPlanning(null);
                 setPreviewPlanningOptionId(null);
+                logEvent('preference_clear_all');
               }}>
                 Clear All
               </button>
@@ -943,15 +1003,15 @@ export function App() {
           </div>
         )}
 
-        <ContextTip copy={EXPOSURE_TIP} />
-        <button className="primary-action" type="button" disabled={!scenario || !camera || route.length < 2 || isComputing} onClick={() => void handleCompute()}>
-          {isComputing ? 'Computing...' : 'Compute Exposure'}
-        </button>
         {studyCondition === 'visual_exposure' && (
           <>
+            <ContextTip copy={EXPOSURE_TIP} />
+            <button className="primary-action" type="button" disabled={!scenario || !camera || route.length < 2 || isComputing} onClick={() => void handleCompute()}>
+              {isComputing ? 'Computing...' : 'Compute Exposure'}
+            </button>
             <ContextTip copy={COMPARE_TIP} />
             <button className="secondary-action" type="button" disabled={!scenario || !camera || route.length < 2 || isComparing} onClick={() => void handleCompare()}>
-              {isComparing ? 'Comparing...' : 'Compare With Preferences'}
+              {isComparing ? 'Reweighting...' : 'Show Preference-Weighted Exposure'}
             </button>
             <ContextTip copy={PLANNING_TIP} />
             <button
@@ -960,13 +1020,16 @@ export function App() {
               disabled={!scenario || !camera || route.length < 2 || preferencePolygons.length === 0 || isOptimizing}
               onClick={() => void handleOptimizePlanning()}
             >
-              {isOptimizing ? 'Optimizing...' : 'Optimize for Privacy'}
+              {isOptimizing ? 'Generating...' : 'Generate Privacy Options'}
             </button>
             {planning && (
               <PlanningOptionsPanel
                 options={planning.options}
                 previewOptionId={previewPlanningOptionId}
-                onPreview={setPreviewPlanningOptionId}
+                onPreview={(optionId) => {
+                  setPreviewPlanningOptionId(optionId);
+                  logEvent('preview_planning_option', { option_id: optionId });
+                }}
                 onApply={applyPlanningOption}
               />
             )}
@@ -994,7 +1057,15 @@ export function App() {
       )}
 
       <section className="summary-panel" aria-label="Exposure summary">
-        {comparison ? (
+        {studyCondition !== 'visual_exposure' ? (
+          <>
+            <p className="summary-empty">
+              {studyCondition === 'basic_notice'
+                ? 'Basic notice condition: exposure computation and preference controls are hidden.'
+                : 'Route + footprint condition: camera footprint is visible, but exposure scores and privacy responses are hidden.'}
+            </p>
+          </>
+        ) : comparison ? (
           <>
             <Metric label="Before Sensitive" value={formatNumber(comparison.before.sensitive_exposure)} />
             <Metric label="After Sensitive" value={formatNumber(comparison.after.sensitive_exposure)} />
@@ -1192,8 +1263,8 @@ function PlanningOptionsPanel({
   return (
     <section className="planning-options" aria-label="Planning options">
       <div className="planning-options-header">
-        <strong>Planning Options</strong>
-        <span>{options.length} evaluated alternatives</span>
+        <strong>Suggested Alternatives</strong>
+        <span>{options.length} backend-evaluated suggestions</span>
       </div>
       {options.map((option) => (
         <article key={option.id} className={previewOptionId === option.id ? 'planning-card active' : 'planning-card'}>

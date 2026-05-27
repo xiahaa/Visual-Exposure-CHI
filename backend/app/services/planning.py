@@ -2,7 +2,8 @@ import math
 from dataclasses import dataclass
 from typing import Iterable
 
-from shapely.geometry import shape
+from shapely.geometry import Point, shape
+from shapely.ops import nearest_points
 
 from ..geo import EnuPoint, GeoPoint, enu_to_geodetic, geodetic_to_enu
 from ..models import CameraConfig, ExposureRequest, PlanningRequest, RoutePoint
@@ -13,10 +14,9 @@ from .exposure import compute_exposure
 
 @dataclass(frozen=True)
 class PreferenceTarget:
-    """A user-marked privacy target represented in backend ENU meters."""
+    """A user-marked privacy region represented in backend ENU meters."""
 
-    x: float
-    y: float
+    geometry: object
     weight: float
 
 
@@ -157,8 +157,8 @@ def _generate_candidates(
         ("altitude_40", "altitude", 40.0, 0.0, False, camera.gimbal_pitch_deg, camera.max_depth_m),
         ("detour_25", "lateral", 0.0, 25.0, False, camera.gimbal_pitch_deg, camera.max_depth_m),
         ("detour_45", "lateral", 0.0, 45.0, False, camera.gimbal_pitch_deg, camera.max_depth_m),
-        ("gimbal_away", "gimbal", 0.0, 0.0, True, min(camera.gimbal_pitch_deg - 15.0, -60.0), _scaled_depth(camera, 0.8)),
-        ("focused_depth", "gimbal", 0.0, 0.0, False, min(camera.gimbal_pitch_deg - 20.0, -65.0), _scaled_depth(camera, 0.6)),
+        ("depth_limited_camera", "depth_limited_camera", 0.0, 0.0, False, min(camera.gimbal_pitch_deg - 15.0, -60.0), _scaled_depth(camera, 0.8)),
+        ("focused_depth", "depth_limited_camera", 0.0, 0.0, False, min(camera.gimbal_pitch_deg - 20.0, -65.0), _scaled_depth(camera, 0.6)),
         ("balanced_combo", "combined", 20.0, 25.0, True, min(camera.gimbal_pitch_deg - 12.0, -58.0), _scaled_depth(camera, 0.85)),
         ("privacy_combo", "combined", 40.0, 45.0, True, min(camera.gimbal_pitch_deg - 20.0, -68.0), _scaled_depth(camera, 0.65)),
     ]
@@ -212,14 +212,15 @@ def _adjust_route(
     lateral_offset_m: float,
     yaw_away: bool,
 ) -> list[RoutePoint]:
-    """Move route waypoints away from preference targets with distance falloff."""
+    """Move a densified route away from preference regions with distance falloff."""
 
     adjusted: list[RoutePoint] = []
-    for waypoint, enu in zip(route, route_to_enu(route, origin)):
-        target = _nearest_target(enu, targets)
-        dx = enu.x - target.x
-        dy = enu.y - target.y
-        distance = max(math.hypot(dx, dy), 1e-6)
+    dense_route = densify_route(route, origin, step_m=20.0)
+    for waypoint, enu in zip(dense_route, route_to_enu(dense_route, origin)):
+        target, nearest = _nearest_target(enu, targets)
+        dx = enu.x - nearest.x
+        dy = enu.y - nearest.y
+        distance = max(Point(enu.x, enu.y).distance(target.geometry), 1e-6)
         falloff = max(0.0, 1.0 - distance / influence_radius_m)
 
         if falloff <= 0:
@@ -264,8 +265,39 @@ def _repair_route_yaw(route: list[RoutePoint]) -> list[RoutePoint]:
     return repaired
 
 
+def densify_route(route: list[RoutePoint], origin: GeoPoint, step_m: float = 20.0) -> list[RoutePoint]:
+    """Insert intermediate waypoints so route response acts on long segments."""
+
+    if len(route) < 2:
+        return route
+
+    route_enu = route_to_enu(route, origin)
+    dense: list[RoutePoint] = []
+    for index, (start, end) in enumerate(zip(route_enu, route_enu[1:])):
+        dx = end.x - start.x
+        dy = end.y - start.y
+        dz = end.z - start.z
+        segment_length = math.sqrt(dx * dx + dy * dy + dz * dz)
+        sample_count = max(1, math.ceil(segment_length / step_m))
+
+        for sample_index in range(sample_count):
+            if dense and sample_index == 0:
+                continue
+            fraction = sample_index / sample_count
+            dense.append(
+                RoutePoint(
+                    lon=_lerp(route[index].lon, route[index + 1].lon, fraction),
+                    lat=_lerp(route[index].lat, route[index + 1].lat, fraction),
+                    alt=_lerp(route[index].alt, route[index + 1].alt, fraction),
+                    yaw=_lerp_angle(route[index].yaw, route[index + 1].yaw, fraction),
+                )
+            )
+    dense.append(route[-1])
+    return dense
+
+
 def _preference_targets(request: PlanningRequest, origin: GeoPoint) -> list[PreferenceTarget]:
-    """Convert user preference polygon centroids into weighted planning targets."""
+    """Convert user preference polygons into weighted ENU planning regions."""
 
     targets: list[PreferenceTarget] = []
     for geojson, weight in (
@@ -273,9 +305,7 @@ def _preference_targets(request: PlanningRequest, origin: GeoPoint) -> list[Pref
         (request.user_preferences.do_not_capture, 1.25),
     ):
         for geometry in _geojson_shapes(geojson):
-            centroid = geometry.centroid
-            enu = geodetic_to_enu(GeoPoint(lon=centroid.x, lat=centroid.y, alt=0.0), origin)
-            targets.append(PreferenceTarget(x=enu.x, y=enu.y, weight=weight))
+            targets.append(PreferenceTarget(geometry=_geometry_to_enu(geometry, origin), weight=weight))
     return targets
 
 
@@ -292,8 +322,35 @@ def _geojson_shapes(geojson: dict | None) -> Iterable:
         raise ValueError("Invalid user preference GeoJSON.") from exc
 
 
-def _nearest_target(point: EnuPoint, targets: list[PreferenceTarget]) -> PreferenceTarget:
-    return min(targets, key=lambda target: math.hypot(point.x - target.x, point.y - target.y) / target.weight)
+def _nearest_target(point: EnuPoint, targets: list[PreferenceTarget]) -> tuple[PreferenceTarget, Point]:
+    route_point = Point(point.x, point.y)
+    target = min(targets, key=lambda item: route_point.distance(item.geometry) / item.weight)
+    nearest = nearest_points(route_point, target.geometry)[1]
+    return target, nearest
+
+
+def _geometry_to_enu(geometry, origin: GeoPoint):
+    """Project a supported Shapely polygon geometry into local ENU meters."""
+
+    def convert_position(position):
+        enu = geodetic_to_enu(GeoPoint(lon=position[0], lat=position[1], alt=0.0), origin)
+        return (enu.x, enu.y)
+
+    return shape(
+        {
+            "type": geometry.geom_type,
+            "coordinates": _convert_coordinates(geometry.__geo_interface__["coordinates"], convert_position),
+        }
+    )
+
+
+def _convert_coordinates(coordinates, convert_position):
+    if not coordinates:
+        return coordinates
+    first = coordinates[0]
+    if isinstance(first, (float, int)):
+        return convert_position(coordinates)
+    return [_convert_coordinates(child, convert_position) for child in coordinates]
 
 
 def _scaled_depth(camera: CameraConfig, factor: float) -> float | None:
@@ -421,9 +478,10 @@ def _route_smoothness(route: list[RoutePoint]) -> float:
 
 
 def _altitude_change(before: list[RoutePoint], after: list[RoutePoint]) -> float:
-    if not before or len(before) != len(after):
+    if not before or not after:
         return 0.0
-    return sum(abs(a.alt - b.alt) for a, b in zip(after, before)) / len(before)
+    baseline_altitude = sum(point.alt for point in before) / len(before)
+    return sum(abs(point.alt - baseline_altitude) for point in after) / len(after)
 
 
 def _bearing(start: RoutePoint, end: RoutePoint) -> float:
@@ -437,6 +495,15 @@ def _bearing(start: RoutePoint, end: RoutePoint) -> float:
 
 def _angle_delta(start: float, end: float) -> float:
     return (end - start + 180.0) % 360.0 - 180.0
+
+
+def _lerp(start: float, end: float, fraction: float) -> float:
+    return start + (end - start) * fraction
+
+
+def _lerp_angle(start: float, end: float, fraction: float) -> float:
+    delta = _angle_delta(start, end)
+    return (start + delta * fraction) % 360.0
 
 
 def _percent_reduction(before: float, after: float) -> float:

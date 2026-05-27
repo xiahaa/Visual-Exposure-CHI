@@ -60,8 +60,89 @@ the value is the `surface_id` used for exposure aggregation.
 
 ## `POST /api/exposure/compare`
 
-Compares baseline exposure against a modified route or preference set.
+Shows a preference-weighted exposure comparison for the same or modified route.
+This endpoint is used by the frontend action `Show Preference-Weighted
+Exposure`: it re-scores exposure with user-marked sensitive and do-not-capture
+areas, but it does not generate a new route or claim mitigation by itself.
 
 The comparison response is computed from two real `/api/exposure/compute`
-summaries and reports sensitive exposure reduction, route length change, and
-estimated task coverage change.
+summaries and reports total exposure change, sensitive exposure change, route
+length change, and estimated task coverage change.
+
+## `POST /api/planning/optimize`
+
+Generates privacy-aware suggested alternatives for route, altitude, and camera
+settings. This is a deterministic candidate-based response generator, not a
+globally optimal path planner.
+
+The planner creates candidate adaptations, evaluates each candidate through the
+same exposure engine, ranks the candidates by privacy/task trade-off, and
+returns a small Pareto-style set for human review.
+
+Request:
+
+```json
+{
+  "scenario_id": "hong_kong_mong_kok_01",
+  "route": [
+    { "lon": 114.1694, "lat": 22.3193, "alt": 80, "yaw": 0 },
+    { "lon": 114.1712, "lat": 22.3201, "alt": 80, "yaw": 30 }
+  ],
+  "camera": {
+    "hfov_deg": 78,
+    "vfov_deg": 50,
+    "gimbal_pitch_deg": -45,
+    "ray_width": 80,
+    "ray_height": 45,
+    "min_depth_m": 0,
+    "max_depth_m": 180
+  },
+  "user_preferences": {
+    "sensitive_areas": { "type": "FeatureCollection", "features": [] },
+    "do_not_capture": { "type": "FeatureCollection", "features": [] }
+  },
+  "planner_config": {
+    "evaluation_ray_width": 32,
+    "evaluation_ray_height": 18,
+    "max_route_increase_percent": 25,
+    "min_task_coverage": 0.75
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "baseline_summary": {},
+  "options": [
+    {
+      "id": "privacy_first",
+      "label": "Privacy-first",
+      "modified_route": [],
+      "modified_camera": {},
+      "summary": {},
+      "delta": {
+        "exposure_reduction_percent": 38.4,
+        "sensitive_exposure_reduction_percent": 61.2,
+        "route_length_increase_percent": 8.5,
+        "coverage_loss_percent": 4.0
+      },
+      "objective_terms": {
+        "privacy": 0.31,
+        "length": 0.08,
+        "smoothness": 0.02,
+        "altitude": 0.12,
+        "gimbal": 0.05,
+        "task": 0.96
+      },
+      "explanation": "Suggested alternative evaluated against the marked privacy areas."
+    }
+  ]
+}
+```
+
+Current candidate strategies include altitude adjustment, lateral detour,
+depth-limited camera, and combined variants. Routes are densified before
+candidate adjustment so long segments near preference polygons can respond even
+when their endpoints are far away.

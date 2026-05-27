@@ -383,6 +383,18 @@ h1 {
   cursor: not-allowed;
 }
 
+.log-download {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid #cbd8dd;
+  background: #fff;
+  color: #30434b;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .toggle-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

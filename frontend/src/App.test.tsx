@@ -101,7 +101,7 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'C1 Basic Notice' }));
     expect(screen.getByText('Review the flight notice, route, altitude, and task purpose.')).toBeInTheDocument();
     expect(screen.getByText('查看飞行通知、航线、高度和任务目的。')).toBeInTheDocument();
-    expect(screen.queryByText('Compare With Preferences')).not.toBeInTheDocument();
+    expect(screen.queryByText('Show Preference-Weighted Exposure')).not.toBeInTheDocument();
   });
 
   it('computes exposure using an uploaded GeoJSON route and selected camera preset', async () => {
@@ -228,7 +228,7 @@ describe('App', () => {
     await userEvent.click(screen.getByTestId('deckgl'));
     await userEvent.click(screen.getByTestId('deckgl'));
     await userEvent.click(screen.getByRole('button', { name: 'Close Polygon' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Compare With Preferences' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Show Preference-Weighted Exposure' }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -270,7 +270,7 @@ describe('App', () => {
     await userEvent.click(screen.getByTestId('deckgl'));
     await userEvent.click(screen.getByTestId('deckgl'));
     await userEvent.click(screen.getByRole('button', { name: 'Close Polygon' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Optimize for Privacy' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Generate Privacy Options' }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -281,13 +281,15 @@ describe('App', () => {
     expect(requestBody.user_preferences.sensitive_areas.features).toHaveLength(1);
     expect(requestBody.planner_config.evaluation_ray_width).toBe(32);
     expect(requestBody.planner_config.evaluation_ray_height).toBe(18);
-    expect(await screen.findByText('Planning Options')).toBeInTheDocument();
+    expect(await screen.findByText('Suggested Alternatives')).toBeInTheDocument();
     expect(screen.getByText('Privacy-first')).toBeInTheDocument();
     expect(screen.getAllByText('Sensitive Down')).toHaveLength(2);
-    expect(screen.getByText('Planning generated: previewing Privacy-first.')).toBeInTheDocument();
+    expect(screen.getByText('Suggested alternatives generated: previewing Privacy-first.')).toBeInTheDocument();
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Apply' })[0]);
-    expect(screen.getByText('Applied planning option: Privacy-first.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Applied suggested alternative: Privacy-first. Recompute exposure to verify the final route at full fidelity.'),
+    ).toBeInTheDocument();
   });
 
   it('switches study conditions and hides visual-exposure controls in C1', async () => {
@@ -296,10 +298,30 @@ describe('App', () => {
     render(<App />);
     await screen.findByText('Residential Block Roof Inspection');
 
-    expect(screen.getByRole('button', { name: 'Compare With Preferences' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show Preference-Weighted Exposure' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'C1 Basic Notice' }));
 
-    expect(screen.queryByRole('button', { name: 'Compare With Preferences' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Compute Exposure' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show Preference-Weighted Exposure' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Generate Privacy Options' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Route file')).not.toBeInTheDocument();
+    expect(screen.queryByText('HFOV')).not.toBeInTheDocument();
+  });
+
+  it('keeps C2 focused on route and frustum without exposure or planning controls', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse(scenarioFixture));
+
+    render(<App />);
+    await screen.findByText('Residential Block Roof Inspection');
+
+    await userEvent.click(screen.getByRole('button', { name: 'C2 Route + Footprint' }));
+
+    expect(screen.getByLabelText('Route file')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New Manual Route' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Compute Exposure' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show Preference-Weighted Exposure' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Generate Privacy Options' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sensitive' })).not.toBeInTheDocument();
     expect(screen.queryByText('HFOV')).not.toBeInTheDocument();
   });
 });
