@@ -1,7 +1,7 @@
 import { compareResponseSchema, exposureResponseSchema, planningResponseSchema, scenarioSchema } from './schemas';
 import type { CameraConfig, CompareResponse, ExposureResponse, PlanningResponse, RoutePoint, Scenario, UserPreferences } from './types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8011';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? 'http://127.0.0.1:8011' : '');
 const STATIC_SCENARIO_BASE = '/scenarios';
 
 const STATIC_CAMERA_PROFILES = [
