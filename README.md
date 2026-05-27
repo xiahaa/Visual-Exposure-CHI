@@ -50,10 +50,10 @@ This repository is already configured for a single Vercel deployment:
 
 ### Deploy on Vercel
 
-1. From `/tmp/workspace/xiahaa/Visual-Exposure-CHI`, run `npm --prefix frontend ci`.
+1. From the repository root, run `npm --prefix frontend ci`.
 2. Verify the frontend production build with `npm --prefix frontend run build`.
 3. Import the GitHub repository into Vercel, or run `vercel` from the repository root.
-4. Keep the project root at the repository root so Vercel uses `/tmp/workspace/xiahaa/Visual-Exposure-CHI/vercel.json`.
+4. Keep the project root at the repository root so Vercel uses `vercel.json`.
 
 ### Environment variables
 

@@ -24,11 +24,11 @@ Production builds default to the same origin, so Vercel should normally leave
 ## Vercel deployment
 
 Deploy from the repository root, not from `frontend/`, so Vercel can use the
-shared `/tmp/workspace/xiahaa/Visual-Exposure-CHI/vercel.json` configuration.
+shared `vercel.json` configuration.
 
 - Install dependencies with `npm --prefix frontend ci`
 - Verify the production bundle with `npm --prefix frontend run build`
-- Deploy with the Vercel project rooted at `/tmp/workspace/xiahaa/Visual-Exposure-CHI`
+- Deploy with the Vercel project rooted at the repository root
 
 The backend will be served by `api/index.py`, so the frontend should keep
 using same-origin `/api/...` requests in production.
