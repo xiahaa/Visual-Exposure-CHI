@@ -34,6 +34,8 @@ def main() -> None:
     scenario = build_scenario()
 
     write_json(SCENARIO_DIR / "scenario.json", scenario)
+    write_json(SCENARIO_DIR / "osm_buildings.geojson", buildings)
+    write_json(SCENARIO_DIR / "osm_semantic_areas.geojson", semantic_layers)
     write_json(SCENARIO_DIR / "buildings.geojson", buildings)
     write_json(SCENARIO_DIR / "semantic_layers.geojson", semantic_layers)
     print(

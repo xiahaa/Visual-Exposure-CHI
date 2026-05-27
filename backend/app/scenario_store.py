@@ -24,8 +24,14 @@ def load_scenario(scenario_id: str) -> dict:
 
     scenario_path = SCENARIO_DIR / scenario_id
     scenario = read_json(scenario_path / "scenario.json")
-    scenario["buildings"] = read_json(scenario_path / "buildings.geojson")
-    scenario["semantic_layers"] = read_json(scenario_path / "semantic_layers.geojson")
+    scenario["buildings"] = read_json(_first_existing(
+        scenario_path / "osm_buildings.geojson",
+        scenario_path / "buildings.geojson",
+    ))
+    scenario["semantic_layers"] = read_json(_first_existing(
+        scenario_path / "osm_semantic_areas.geojson",
+        scenario_path / "semantic_layers.geojson",
+    ))
     _attach_camera_profiles(scenario)
     return scenario
 
@@ -72,3 +78,12 @@ def _attach_camera_profiles(scenario: dict) -> None:
     )
     if default_profile:
         scenario["camera"] = default_profile["camera"]
+
+
+def _first_existing(*paths: Path) -> Path:
+    """Return the first existing scenario file from a compatibility list."""
+
+    for path in paths:
+        if path.exists():
+            return path
+    return paths[-1]

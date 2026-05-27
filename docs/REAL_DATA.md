@@ -62,9 +62,15 @@ Generated files:
 
 ```text
 data/scenarios/hong_kong_mong_kok_01/scenario.json
+data/scenarios/hong_kong_mong_kok_01/osm_buildings.geojson
+data/scenarios/hong_kong_mong_kok_01/osm_semantic_areas.geojson
 data/scenarios/hong_kong_mong_kok_01/buildings.geojson
 data/scenarios/hong_kong_mong_kok_01/semantic_layers.geojson
 ```
+
+The `osm_*.geojson` files are the preferred explicit real-data artifacts. The
+legacy `buildings.geojson` and `semantic_layers.geojson` filenames are kept as
+compatibility aliases for older scripts and tests.
 
 ## Notes
 
