@@ -217,18 +217,16 @@ def _adjust_route(
     adjusted: list[RoutePoint] = []
     dense_route = densify_route(route, origin, step_m=20.0)
     for waypoint, enu in zip(dense_route, route_to_enu(dense_route, origin)):
-        target, nearest = _nearest_target(enu, targets)
-        dx = enu.x - nearest.x
-        dy = enu.y - nearest.y
-        distance = max(Point(enu.x, enu.y).distance(target.geometry), 1e-6)
+        target, dx, dy, distance = _repulsion_vector(enu, targets)
         falloff = max(0.0, 1.0 - distance / influence_radius_m)
 
         if falloff <= 0:
             adjusted.append(waypoint)
             continue
 
-        ux = dx / distance
-        uy = dy / distance
+        direction_norm = max(math.hypot(dx, dy), 1e-6)
+        ux = dx / direction_norm
+        uy = dy / direction_norm
         next_enu = EnuPoint(
             x=enu.x + ux * lateral_offset_m * falloff,
             y=enu.y + uy * lateral_offset_m * falloff,
@@ -327,6 +325,36 @@ def _nearest_target(point: EnuPoint, targets: list[PreferenceTarget]) -> tuple[P
     target = min(targets, key=lambda item: route_point.distance(item.geometry) / item.weight)
     nearest = nearest_points(route_point, target.geometry)[1]
     return target, nearest
+
+
+def _repulsion_vector(point: EnuPoint, targets: list[PreferenceTarget]) -> tuple[PreferenceTarget, float, float, float]:
+    """Return a stable direction away from the nearest privacy target.
+
+    Shapely's nearest point can equal the route point when the point is inside
+    a polygon. In that case a lateral detour would have no direction. We then
+    push away from the nearest boundary, and finally fall back to the opposite
+    direction from the polygon centroid for degenerate geometries.
+    """
+
+    route_point = Point(point.x, point.y)
+    target, nearest = _nearest_target(point, targets)
+    distance = route_point.distance(target.geometry)
+
+    if target.geometry.contains(route_point) or distance <= 1e-6:
+        nearest = nearest_points(route_point, target.geometry.boundary)[1]
+
+    dx = route_point.x - nearest.x
+    dy = route_point.y - nearest.y
+    if math.hypot(dx, dy) <= 1e-6:
+        centroid = target.geometry.centroid
+        dx = route_point.x - centroid.x
+        dy = route_point.y - centroid.y
+
+    if math.hypot(dx, dy) <= 1e-6:
+        dx = 1.0
+        dy = 0.0
+
+    return target, dx, dy, distance
 
 
 def _geometry_to_enu(geometry, origin: GeoPoint):
@@ -462,7 +490,10 @@ def _candidate_explanation(strategy: str) -> str:
     explanations = {
         "altitude": "Raises route altitude near marked privacy areas to reduce close visual exposure.",
         "lateral": "Offsets nearby route segments away from marked privacy areas while preserving the task path shape.",
-        "gimbal": "Adjusts viewing direction and effective visual depth near marked privacy areas.",
+        "depth_limited_camera": (
+            "Limits the effective visual depth and adjusts the camera pitch near marked privacy areas "
+            "to reduce long-range recognizable exposure."
+        ),
         "combined": "Combines route offset, altitude increase, and camera adjustment for a stronger privacy response.",
     }
     return explanations.get(strategy, "Keeps the current route as a baseline option.")

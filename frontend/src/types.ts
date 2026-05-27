@@ -118,6 +118,8 @@ export type PreferenceKind = 'sensitive_area' | 'do_not_capture';
 
 export type StudyCondition = 'basic_notice' | 'camera_footprint' | 'visual_exposure';
 
+export type StudyRole = 'participant' | 'facilitator';
+
 export type LayerToggles = {
   buildings: boolean;
   semanticRegions: boolean;

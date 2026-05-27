@@ -54,7 +54,7 @@ without editing Python code.
 
 ## Near-Term Tasks
 
-1. Replace placeholder exposure with Open3D RaycastingScene.
-2. Add WGS84 to local ENU conversion utilities.
-3. Generate 2.5D meshes from GeoJSON footprints.
-4. Aggregate first-hit rays into surface-level exposure scores.
+1. Continue validating Open3D first-hit raycasting against small synthetic geometry cases.
+2. Expand planner validation for route/camera alternatives near complex preference polygons.
+3. Keep scenario and camera parameters in YAML so study runs remain reproducible.
+4. Profile Hong Kong scenario latency after each planning or exposure-engine change.

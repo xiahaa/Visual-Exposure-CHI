@@ -198,9 +198,9 @@ export const planningFixture = {
   baseline_summary: exposureFixture.summary,
   options: [
     {
-      id: 'privacy_combo',
+      id: 'depth_limited_camera',
       label: 'Privacy-first',
-      strategy: 'combined',
+      strategy: 'depth_limited_camera',
       modified_route: [
         { lon: 113.92965, lat: 22.53975, alt: 96, yaw: 38 },
         { lon: 113.93088, lat: 22.54082, alt: 98, yaw: 38 },
@@ -236,7 +236,8 @@ export const planningFixture = {
         task: 0.86,
         objective: -12.4,
       },
-      explanation: 'Combines route offset, altitude increase, and camera adjustment for a stronger privacy response.',
+      explanation:
+        'Limits the effective visual depth and adjusts the camera pitch near marked privacy areas to reduce long-range recognizable exposure.',
     },
     {
       id: 'balanced_combo',

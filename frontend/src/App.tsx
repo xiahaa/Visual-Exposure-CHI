@@ -25,6 +25,7 @@ import type {
   RoutePoint,
   Scenario,
   StudyCondition,
+  StudyRole,
 } from './types';
 import type { FeatureCollection } from './utils/geojson';
 
@@ -87,7 +88,7 @@ const GUIDE_STEPS: Record<StudyCondition, BilingualCopy[]> = {
   ],
   visual_exposure: [
     {
-      en: 'Prepare a route by uploading a file or selecting waypoints on the map.',
+      en: 'Review the prepared route before computing estimated visual exposure.',
       zh: '通过上传文件或在地图上选点来准备航线。',
     },
     {
@@ -135,7 +136,17 @@ const PLANNING_TIP: BilingualCopy = {
   zh: '优化会为已标注的隐私区域提出航线、高度和相机替代方案。',
 };
 
+function getStudyRole(): StudyRole {
+  if (typeof window === 'undefined') {
+    return 'participant';
+  }
+  return new URLSearchParams(window.location.search).get('role') === 'facilitator'
+    ? 'facilitator'
+    : 'participant';
+}
+
 export function App() {
+  const studyRole = getStudyRole();
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [route, setRoute] = useState<RoutePoint[]>([]);
   const [camera, setCamera] = useState<CameraConfig | null>(null);
@@ -160,6 +171,7 @@ export function App() {
   const [advancedCameraOpen, setAdvancedCameraOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(true);
   const [studyLog, setStudyLog] = useState<StudyLogEvent[]>([]);
+  const canEditRoute = studyRole === 'facilitator' && studyCondition !== 'basic_notice';
 
   const logEvent = useCallback((event: string, payload: Record<string, unknown> = {}, summary?: Record<string, unknown>) => {
     setStudyLog((current) => [
@@ -168,7 +180,9 @@ export function App() {
         event,
         scenario_id: scenario?.scenario_id,
         condition: studyCondition,
+        role: studyRole,
         camera_profile_id: activeCameraProfileId,
+        option_id: typeof payload.option_id === 'string' ? payload.option_id : undefined,
         ...routeSnapshot(route),
         payload: {
           ...payload,
@@ -177,7 +191,13 @@ export function App() {
         summary,
       }),
     ]);
-  }, [activeCameraProfileId, camera, route, scenario?.scenario_id, studyCondition]);
+  }, [activeCameraProfileId, camera, route, scenario?.scenario_id, studyCondition, studyRole]);
+
+  useEffect(() => {
+    if (!canEditRoute && interactionMode === 'route') {
+      setInteractionMode('inspect');
+    }
+  }, [canEditRoute, interactionMode]);
 
   useEffect(() => {
     let active = true;
@@ -761,6 +781,7 @@ export function App() {
           <div>
             <strong>{scenario?.name ?? 'Loading scenario'}</strong>
             <p>{scenario?.summary.task ?? 'Fetching live backend data...'}</p>
+            <p className="role-note">Study role: {studyRole}</p>
           </div>
         </div>
 
@@ -797,7 +818,9 @@ export function App() {
           </div>
         )}
 
-        {studyCondition !== 'basic_notice' && (
+        <p className="hint">{uploadMessage}</p>
+
+        {canEditRoute && (
           <>
         <label className="field">
           <span>Route file</span>
@@ -809,7 +832,6 @@ export function App() {
           />
         </label>
         <ContextTip copy={ROUTE_TIP} />
-        <p className="hint">{uploadMessage}</p>
 
         <div className="route-tools" aria-label="Manual route tools">
           <div className="tool-row">

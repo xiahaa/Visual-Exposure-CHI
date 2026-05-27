@@ -63,9 +63,10 @@ describe('App', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mapClickIndex = 0;
+    window.history.pushState({}, '', '/');
   });
 
-  it('loads scenario data and renders the default route context', async () => {
+  it('loads scenario data in participant mode with fixed route controls hidden', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse(scenarioFixture));
 
     render(<App />);
@@ -74,10 +75,10 @@ describe('App', () => {
     expect(metricValue('Waypoints')).toBe('2');
     expect(metricValue('Frustums')).toBe('2');
     expect(screen.getByText('Default route loaded from scenario.')).toBeInTheDocument();
-    expect(screen.getByText('User Guide / 使用指南')).toBeInTheDocument();
-    expect(screen.getByText('Prepare a route by uploading a file or selecting waypoints on the map.')).toBeInTheDocument();
-    expect(screen.getByText('通过上传文件或在地图上选点来准备航线。')).toBeInTheDocument();
-    expect(screen.getByText('可上传 GeoJSON/WKT，也可手动在地图上选择航点。')).toBeInTheDocument();
+    expect(screen.getByText(/User Guide/)).toBeInTheDocument();
+    expect(screen.getByText('Review the prepared route before computing estimated visual exposure.')).toBeInTheDocument();
+    expect(screen.getByText('Study role: participant')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Route file')).not.toBeInTheDocument();
     expect(screen.getByText('Camera Mode')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Balanced Inspection/ })).toBeInTheDocument();
     expect(document.querySelector('.advanced-camera')).not.toHaveAttribute('open');
@@ -91,20 +92,19 @@ describe('App', () => {
 
     const guide = document.querySelector('.step-guide');
     expect(guide).toHaveAttribute('open');
-    await userEvent.click(screen.getByText('User Guide / 使用指南'));
+    await userEvent.click(screen.getByText(/User Guide/));
     expect(guide).not.toHaveAttribute('open');
 
     await userEvent.click(screen.getByRole('button', { name: 'C2 Route + Footprint' }));
     expect(screen.getByText('Use the footprint to judge which places may enter the camera view.')).toBeInTheDocument();
-    expect(screen.getByText('根据相机覆盖范围判断哪些地点可能进入画面。')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'C1 Basic Notice' }));
     expect(screen.getByText('Review the flight notice, route, altitude, and task purpose.')).toBeInTheDocument();
-    expect(screen.getByText('查看飞行通知、航线、高度和任务目的。')).toBeInTheDocument();
     expect(screen.queryByText('Show Preference-Weighted Exposure')).not.toBeInTheDocument();
   });
 
-  it('computes exposure using an uploaded GeoJSON route and selected camera preset', async () => {
+  it('computes exposure using an uploaded GeoJSON route and selected camera preset in facilitator mode', async () => {
+    setFacilitatorRole();
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonResponse(scenarioFixture))
@@ -149,9 +149,8 @@ describe('App', () => {
     expect(screen.getByText('42.2')).toBeInTheDocument();
     expect(screen.getByText('Affected Buildings')).toBeInTheDocument();
     expect(screen.getByText('Affected Areas')).toBeInTheDocument();
-    expect(screen.getByText('What This Means / 含义说明')).toBeInTheDocument();
+    expect(screen.getByText(/What This Means/)).toBeInTheDocument();
     expect(screen.getByText('Orange outlines and halos show buildings and areas with non-zero estimated exposure.')).toBeInTheDocument();
-    expect(screen.getByText('橙色轮廓和光环表示估计暴露值不为零的建筑和区域。')).toBeInTheDocument();
   });
 
   it('marks the camera profile as custom after advanced edits', async () => {
@@ -179,7 +178,8 @@ describe('App', () => {
     expect(requestBody.camera.max_depth_m).toBe(130);
   });
 
-  it('lets users create a manual waypoint route before computing exposure', async () => {
+  it('lets facilitators create a manual waypoint route before computing exposure', async () => {
+    setFacilitatorRole();
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonResponse(scenarioFixture))
@@ -239,7 +239,6 @@ describe('App', () => {
     expect(requestBody.after.user_preferences.do_not_capture.features).toHaveLength(1);
     expect(await screen.findByText('Before Sensitive')).toBeInTheDocument();
     expect(screen.getByText('Exposure Delta')).toBeInTheDocument();
-    expect(screen.getByText('这些数值概括了应用用户隐私偏好后的取舍关系。')).toBeInTheDocument();
   });
 
   it('draws preference vertices before surface inspection while in preference mode', async () => {
@@ -256,7 +255,7 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Close Polygon' })).toBeEnabled();
   });
 
-  it('optimizes privacy options and applies a selected planning route', async () => {
+  it('generates privacy options, renders depth-limited explanation, and applies a selected route', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonResponse(scenarioFixture))
@@ -283,6 +282,10 @@ describe('App', () => {
     expect(requestBody.planner_config.evaluation_ray_height).toBe(18);
     expect(await screen.findByText('Suggested Alternatives')).toBeInTheDocument();
     expect(screen.getByText('Privacy-first')).toBeInTheDocument();
+    expect(screen.getByText('depth_limited_camera')).toBeInTheDocument();
+    expect(screen.getByText(
+      'Limits the effective visual depth and adjusts the camera pitch near marked privacy areas to reduce long-range recognizable exposure.',
+    )).toBeInTheDocument();
     expect(screen.getAllByText('Sensitive Down')).toHaveLength(2);
     expect(screen.getByText('Suggested alternatives generated: previewing Privacy-first.')).toBeInTheDocument();
 
@@ -308,7 +311,7 @@ describe('App', () => {
     expect(screen.queryByText('HFOV')).not.toBeInTheDocument();
   });
 
-  it('keeps C2 focused on route and frustum without exposure or planning controls', async () => {
+  it('keeps participant C2 focused on route and frustum without editing, exposure, or planning controls', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse(scenarioFixture));
 
     render(<App />);
@@ -316,13 +319,33 @@ describe('App', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'C2 Route + Footprint' }));
 
-    expect(screen.getByLabelText('Route file')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'New Manual Route' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Route file')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New Manual Route' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Compute Exposure' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Show Preference-Weighted Exposure' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Generate Privacy Options' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sensitive' })).not.toBeInTheDocument();
     expect(screen.queryByText('HFOV')).not.toBeInTheDocument();
+  });
+
+  it('shows route editing controls to facilitators in C2 and C3 only', async () => {
+    setFacilitatorRole();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse(scenarioFixture));
+
+    render(<App />);
+    await screen.findByText('Residential Block Roof Inspection');
+
+    expect(screen.getByText('Study role: facilitator')).toBeInTheDocument();
+    expect(screen.getByLabelText('Route file')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New Manual Route' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'C2 Route + Footprint' }));
+    expect(screen.getByLabelText('Route file')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New Manual Route' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'C1 Basic Notice' }));
+    expect(screen.queryByLabelText('Route file')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New Manual Route' })).not.toBeInTheDocument();
   });
 });
 
@@ -342,4 +365,8 @@ function metricValue(label: string): string {
     throw new Error(`Metric not found: ${label}`);
   }
   return metric.querySelector('strong')?.textContent ?? '';
+}
+
+function setFacilitatorRole() {
+  window.history.pushState({}, '', '/?role=facilitator');
 }

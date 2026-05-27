@@ -22,6 +22,18 @@ Open:
 http://127.0.0.1:5174
 ```
 
+Use participant mode for study sessions:
+
+```text
+http://127.0.0.1:5174
+```
+
+Use facilitator mode only for setup, route upload, and manual route debugging:
+
+```text
+http://127.0.0.1:5174?role=facilitator
+```
+
 ## Method Note
 
 The planning feature is a deterministic candidate-based response generator. It
@@ -58,8 +70,8 @@ The app shows the same lightweight guidance in English and Chinese.
 6. Optionally expand `Advanced Camera` to inspect reproducible raycasting parameters.
    如需查看可复现实验参数，可展开 `Advanced Camera`。
 
-7. Click `New Manual Route`, select three or more waypoints on the map, then click `Finish Route`.
-   点击 `New Manual Route`，在地图上选择至少三个航点，然后点击 `Finish Route`。
+7. In facilitator mode only, click `New Manual Route`, select three or more waypoints on the map, then click `Finish Route`.
+   仅在 facilitator 模式下，点击 `New Manual Route`，在地图上选择至少三个航点，然后点击 `Finish Route`。
 
 8. Click `Compute Exposure`.
    点击 `Compute Exposure` 计算估计视觉暴露。

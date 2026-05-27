@@ -1,10 +1,11 @@
-import type { CameraConfig, ExposureSummary, RoutePoint, StudyCondition } from './types';
+import type { CameraConfig, ExposureSummary, RoutePoint, StudyCondition, StudyRole } from './types';
 
 export type StudyLogEvent = {
   timestamp: string;
   event: string;
   scenario_id?: string;
   condition: StudyCondition;
+  role: StudyRole;
   route_length?: number;
   route_waypoints?: number;
   camera_profile_id?: string;
