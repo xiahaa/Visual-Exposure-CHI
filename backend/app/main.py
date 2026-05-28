@@ -143,12 +143,16 @@ def post_optimize_planning(request: PlanningRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+# Keep this route last; backend endpoints should stay under /api so the SPA
+# fallback does not shadow them.
 @app.get("/{path:path}", include_in_schema=False)
 def frontend(path: str) -> Response:
     """Serve built frontend assets and fall back to the SPA entrypoint."""
 
+    if path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not found")
     if not FRONTEND_INDEX_PATH.exists():
-        raise HTTPException(status_code=404)
+        raise HTTPException(status_code=404, detail="Frontend assets not found")
 
     asset_path = _resolve_frontend_path(path)
     if asset_path is not None:
