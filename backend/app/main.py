@@ -156,8 +156,8 @@ def post_optimize_planning(request: PlanningRequest) -> dict:
 # Register this last. FastAPI matches earlier routes first, so backend
 # endpoints must be declared above it and should stay under /api.
 @app.get("/{path:path}", include_in_schema=False)
-def frontend(path: str) -> Response:
-    """Serve built frontend assets and fall back to the SPA entrypoint."""
+def frontend_fallback(path: str) -> Response:
+    """Serve the SPA entrypoint for all non-API routes."""
 
     if not FRONTEND_INDEX_PATH.exists():
         raise HTTPException(status_code=404, detail="Frontend build not available")
