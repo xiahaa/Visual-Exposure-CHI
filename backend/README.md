@@ -13,6 +13,16 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
+## Production / Railpack
+
+For deployments built from the repository root, Railpack uses
+`/tmp/workspace/xiahaa/Visual-Exposure-CHI/railpack.json` to start the backend
+with:
+
+```text
+uvicorn api.index:app --host 0.0.0.0 --port ${PORT:-8000}
+```
+
 From the current project location, the shared Windows development environment is
 kept at `D:\CHI\.venv`:
 
