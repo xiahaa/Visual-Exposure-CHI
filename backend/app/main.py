@@ -3,8 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .models import CompareRequest, ExposureRequest, PlanningRequest
 from .scenario_store import load_prepared_mesh, load_scenario, load_surface_cells
-from .services.exposure import compare_exposure, compute_exposure
-from .services.planning import optimize_planning
 
 app = FastAPI(title="CHI Drone Visual Exposure Prototype")
 
@@ -64,6 +62,8 @@ def get_scenario_mesh(scenario_id: str) -> dict:
 def post_compute_exposure(request: ExposureRequest) -> dict:
     """Compute estimated visual exposure for a route/camera request."""
 
+    from .services.exposure import compute_exposure
+
     try:
         return compute_exposure(request)
     except FileNotFoundError as exc:
@@ -76,6 +76,8 @@ def post_compute_exposure(request: ExposureRequest) -> dict:
 def post_compare_exposure(request: CompareRequest) -> dict:
     """Compare two exposure computations for privacy-task trade-off feedback."""
 
+    from .services.exposure import compare_exposure
+
     try:
         return compare_exposure(request)
     except FileNotFoundError as exc:
@@ -87,6 +89,8 @@ def post_compare_exposure(request: CompareRequest) -> dict:
 @app.post("/api/planning/optimize")
 def post_optimize_planning(request: PlanningRequest) -> dict:
     """Generate privacy-aware route/camera alternatives for decision support."""
+
+    from .services.planning import optimize_planning
 
     try:
         return optimize_planning(request)
