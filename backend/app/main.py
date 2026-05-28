@@ -3,7 +3,6 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
 
 from .models import CompareRequest, ExposureRequest, PlanningRequest
 from .scenario_store import load_prepared_mesh, load_scenario, load_surface_cells
@@ -144,5 +143,26 @@ def post_optimize_planning(request: PlanningRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-if FRONTEND_DIST_DIR.exists():
-    app.mount("/", StaticFiles(directory=FRONTEND_DIST_DIR, html=True), name="frontend")
+@app.get("/{path:path}", include_in_schema=False)
+def frontend(path: str) -> Response:
+    """Serve built frontend assets and fall back to the SPA entrypoint."""
+
+    if not FRONTEND_INDEX_PATH.exists():
+        raise HTTPException(status_code=404)
+
+    asset_path = _resolve_frontend_path(path)
+    if asset_path is not None:
+        return FileResponse(asset_path)
+    return FileResponse(FRONTEND_INDEX_PATH)
+
+
+def _resolve_frontend_path(path: str) -> Path | None:
+    """Resolve a request path inside the built frontend directory."""
+
+    requested_path = (FRONTEND_DIST_DIR / path).resolve()
+    frontend_root = FRONTEND_DIST_DIR.resolve()
+    try:
+        requested_path.relative_to(frontend_root)
+    except ValueError:
+        return None
+    return requested_path if requested_path.is_file() else None
