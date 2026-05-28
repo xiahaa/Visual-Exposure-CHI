@@ -33,6 +33,13 @@ app.add_middleware(
 )
 
 
+if FRONTEND_ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS_DIR), name="frontend-assets")
+
+if FRONTEND_SCENARIOS_DIR.exists():
+    app.mount("/scenarios", StaticFiles(directory=FRONTEND_SCENARIOS_DIR), name="frontend-scenarios")
+
+
 @app.get("/", include_in_schema=False)
 def root() -> Response:
     """Serve the built frontend when available, otherwise show a small landing page."""
@@ -66,14 +73,6 @@ def favicon() -> Response:
     if FRONTEND_FAVICON_PATH.exists():
         return FileResponse(FRONTEND_FAVICON_PATH)
     return Response(status_code=204)
-
-
-if FRONTEND_ASSETS_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS_DIR), name="frontend-assets")
-
-if FRONTEND_SCENARIOS_DIR.exists():
-    app.mount("/scenarios", StaticFiles(directory=FRONTEND_SCENARIOS_DIR), name="frontend-scenarios")
-
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
@@ -162,6 +161,4 @@ def frontend(path: str) -> Response:
 
     if not FRONTEND_INDEX_PATH.exists():
         raise HTTPException(status_code=404, detail="Frontend build not available")
-    if path.startswith(("assets/", "scenarios/")):
-        raise HTTPException(status_code=404, detail="Frontend asset not found")
     return FileResponse(FRONTEND_INDEX_PATH)
