@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import unquote
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,6 +8,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from .models import CompareRequest, ExposureRequest, PlanningRequest
 from .scenario_store import load_prepared_mesh, load_scenario, load_surface_cells
 
+# Navigate from backend/app/main.py back to the repository root.
 ROOT_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIST_DIR = ROOT_DIR / "frontend" / "dist"
 FRONTEND_INDEX_PATH = FRONTEND_DIST_DIR / "index.html"
@@ -143,14 +145,12 @@ def post_optimize_planning(request: PlanningRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-# Keep this route last; backend endpoints should stay under /api so the SPA
-# fallback does not shadow them.
+# Register this last. FastAPI matches earlier routes first, so backend
+# endpoints must be declared above it and should stay under /api.
 @app.get("/{path:path}", include_in_schema=False)
 def frontend(path: str) -> Response:
     """Serve built frontend assets and fall back to the SPA entrypoint."""
 
-    if path.startswith("api/"):
-        raise HTTPException(status_code=404, detail="Not found")
     if not FRONTEND_INDEX_PATH.exists():
         raise HTTPException(status_code=404, detail="Frontend assets not found")
 
@@ -163,7 +163,7 @@ def frontend(path: str) -> Response:
 def _resolve_frontend_path(path: str) -> Path | None:
     """Resolve a request path inside the built frontend directory."""
 
-    requested_path = (FRONTEND_DIST_DIR / path).resolve()
+    requested_path = (FRONTEND_DIST_DIR / Path(unquote(path).lstrip("/"))).resolve()
     frontend_root = FRONTEND_DIST_DIR.resolve()
     try:
         requested_path.relative_to(frontend_root)
