@@ -1,9 +1,9 @@
 from pathlib import Path
-from urllib.parse import unquote
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from .models import CompareRequest, ExposureRequest, PlanningRequest
 from .scenario_store import load_prepared_mesh, load_scenario, load_surface_cells
@@ -13,6 +13,8 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIST_DIR = ROOT_DIR / "frontend" / "dist"
 FRONTEND_INDEX_PATH = FRONTEND_DIST_DIR / "index.html"
 FRONTEND_FAVICON_PATH = FRONTEND_DIST_DIR / "favicon.ico"
+FRONTEND_ASSETS_DIR = FRONTEND_DIST_DIR / "assets"
+FRONTEND_SCENARIOS_DIR = FRONTEND_DIST_DIR / "scenarios"
 
 app = FastAPI(title="CHI Drone Visual Exposure Prototype")
 
@@ -64,6 +66,13 @@ def favicon() -> Response:
     if FRONTEND_FAVICON_PATH.exists():
         return FileResponse(FRONTEND_FAVICON_PATH)
     return Response(status_code=204)
+
+
+if FRONTEND_ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS_DIR), name="frontend-assets")
+
+if FRONTEND_SCENARIOS_DIR.exists():
+    app.mount("/scenarios", StaticFiles(directory=FRONTEND_SCENARIOS_DIR), name="frontend-scenarios")
 
 
 @app.get("/api/health")
@@ -152,21 +161,7 @@ def frontend(path: str) -> Response:
     """Serve built frontend assets and fall back to the SPA entrypoint."""
 
     if not FRONTEND_INDEX_PATH.exists():
-        raise HTTPException(status_code=404, detail="Frontend assets not found")
-
-    asset_path = _resolve_frontend_path(path)
-    if asset_path is not None:
-        return FileResponse(asset_path)
+        raise HTTPException(status_code=404, detail="Frontend build not available")
+    if path.startswith(("assets/", "scenarios/")):
+        raise HTTPException(status_code=404, detail="Frontend asset not found")
     return FileResponse(FRONTEND_INDEX_PATH)
-
-
-def _resolve_frontend_path(path: str) -> Path | None:
-    """Resolve a request path inside the built frontend directory."""
-
-    requested_path = (FRONTEND_DIST_DIR / Path(unquote(path).lstrip("/"))).resolve()
-    frontend_root = FRONTEND_DIST_DIR.resolve()
-    try:
-        requested_path.relative_to(frontend_root)
-    except ValueError:
-        return None
-    return requested_path if requested_path.is_file() else None
