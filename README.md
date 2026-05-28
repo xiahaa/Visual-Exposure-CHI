@@ -23,6 +23,26 @@ docs/
   Research framing, API contracts, and implementation notes
 ```
 
+## Deployment
+
+The recommended deployment is split by responsibility:
+
+```text
+Vercel:
+  frontend/ static React app
+
+Hugging Face Spaces:
+  Dockerized FastAPI + Open3D backend
+```
+
+After the Hugging Face Space is live, set the Vercel environment variable:
+
+```text
+VITE_API_BASE_URL=https://<user-or-org>-<space-name>.hf.space
+```
+
+See `docs/HF_SPACES_DEPLOYMENT.md` for the full checklist.
+
 ## Core Principle
 
 The frontend does not decide privacy. The backend does not decide user choices.

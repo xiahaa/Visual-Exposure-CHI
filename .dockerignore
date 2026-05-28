@@ -1,0 +1,14 @@
+.git
+.venv
+**/__pycache__
+**/*.pyc
+frontend/node_modules
+frontend/dist
+frontend/.vite
+*.log
+*.jsonl
+docs/feedback.md
+docs/feedback2.md
+docs/feedback3.md
+yes
+yes.pub
