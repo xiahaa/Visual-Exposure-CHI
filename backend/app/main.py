@@ -1,8 +1,17 @@
-from fastapi import FastAPI, HTTPException
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from .models import CompareRequest, ExposureRequest, PlanningRequest
 from .scenario_store import load_prepared_mesh, load_scenario, load_surface_cells
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+FRONTEND_DIST_DIR = ROOT_DIR / "frontend" / "dist"
+FRONTEND_INDEX_PATH = FRONTEND_DIST_DIR / "index.html"
+FRONTEND_FAVICON_PATH = FRONTEND_DIST_DIR / "favicon.ico"
 
 app = FastAPI(title="CHI Drone Visual Exposure Prototype")
 
@@ -19,6 +28,41 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/", include_in_schema=False)
+def root() -> FileResponse | HTMLResponse:
+    """Serve the built frontend when available, otherwise show a small landing page."""
+
+    if FRONTEND_INDEX_PATH.exists():
+        return FileResponse(FRONTEND_INDEX_PATH)
+
+    return HTMLResponse(
+        """
+        <!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>CHI Drone Visual Exposure Prototype</title>
+          </head>
+          <body>
+            <h1>CHI Drone Visual Exposure Prototype</h1>
+            <p>The backend is running.</p>
+            <p>API health: <a href="/api/health">/api/health</a></p>
+          </body>
+        </html>
+        """.strip()
+    )
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse | Response:
+    """Return the frontend favicon when present, otherwise avoid a 404."""
+
+    if FRONTEND_FAVICON_PATH.exists():
+        return FileResponse(FRONTEND_FAVICON_PATH)
+    return Response(status_code=204)
 
 
 @app.get("/api/health")
@@ -98,3 +142,7 @@ def post_optimize_planning(request: PlanningRequest) -> dict:
         raise HTTPException(status_code=404, detail="Scenario not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+if FRONTEND_DIST_DIR.exists():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIST_DIR, html=True), name="frontend")
