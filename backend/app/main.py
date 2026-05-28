@@ -31,7 +31,7 @@ app.add_middleware(
 
 
 @app.get("/", include_in_schema=False)
-def root() -> FileResponse | HTMLResponse:
+def root() -> Response:
     """Serve the built frontend when available, otherwise show a small landing page."""
 
     if FRONTEND_INDEX_PATH.exists():
@@ -57,7 +57,7 @@ def root() -> FileResponse | HTMLResponse:
 
 
 @app.get("/favicon.ico", include_in_schema=False)
-def favicon() -> FileResponse | Response:
+def favicon() -> Response:
     """Return the frontend favicon when present, otherwise avoid a 404."""
 
     if FRONTEND_FAVICON_PATH.exists():
