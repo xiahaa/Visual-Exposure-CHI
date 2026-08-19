@@ -11,6 +11,7 @@ dist/
 # Logs and local data
 *.log
 *.jsonl
+*-test-results.json
 
 # OS/editor
 .DS_Store

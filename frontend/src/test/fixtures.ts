@@ -64,6 +64,13 @@ export const scenarioFixture = {
     task: 'Inspect residential rooftops after maintenance work.',
     notice: 'Estimated visual exposure is computed from the planned route and camera settings.',
   },
+  translations: {
+    zh: {
+      name: '住宅街区屋顶巡检',
+      task: '维护完成后检查住宅建筑屋顶。',
+      notice: '估计的视觉暴露由计划航线与相机设置计算得到。',
+    },
+  },
   buildings: {
     type: 'FeatureCollection',
     features: [
@@ -161,6 +168,20 @@ export const exposureFixture = {
       semantic_type: 'residential',
     },
   ],
+  pose_evidence: Array.from({ length: 32 }, (_, index) => ({
+    pose_index: index,
+    distance_along_route_m: Number(((150.8 * index) / 31).toFixed(2)),
+    route_fraction: Number((index / 31).toFixed(6)),
+    lon: 113.9297 + (113.9308 - 113.9297) * (index / 31),
+    lat: 22.5398 + (22.5407 - 22.5398) * (index / 31),
+    alt: 80,
+    yaw: 45,
+    gimbal_pitch_deg: -45,
+    total_exposure: Number((1.2 + Math.sin((index / 31) * Math.PI) * 6).toFixed(4)),
+    sensitive_exposure: Number((Math.max(0, Math.sin((index / 31) * Math.PI)) * 2.4).toFixed(4)),
+    visible_surface_count: index > 4 && index < 28 ? 2 : 1,
+    top_surface_ids: index > 10 && index < 24 ? ['courtyard_01', 'B01_roof'] : ['B01_roof'],
+  })),
   summary: {
     total_exposure: 128.4,
     sensitive_exposure: 42.2,

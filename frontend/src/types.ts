@@ -33,8 +33,26 @@ export type Scenario = {
   default_camera_profile_id: string;
   default_route: RoutePoint[];
   summary: { task: string; notice: string };
+  translations?: {
+    zh?: { name: string; task: string; notice: string };
+  };
   buildings: FeatureCollection;
   semantic_layers: FeatureCollection;
+};
+
+export type PoseEvidence = {
+  pose_index: number;
+  distance_along_route_m: number;
+  route_fraction: number;
+  lon: number;
+  lat: number;
+  alt: number;
+  yaw: number;
+  gimbal_pitch_deg: number;
+  total_exposure: number;
+  sensitive_exposure: number;
+  visible_surface_count: number;
+  top_surface_ids: string[];
 };
 
 export type ExposureSummary = {
@@ -51,6 +69,7 @@ export type ExposureSummary = {
     max_range_m: number;
     recognizability_d0_m: number;
     route_sample_step_m: number;
+    reference_rays_per_pose?: number;
   };
 };
 
@@ -64,6 +83,7 @@ export type ExposureResponse = {
     surface_type: string;
     semantic_type: string;
   }>;
+  pose_evidence: PoseEvidence[];
   summary: ExposureSummary;
 };
 
@@ -119,6 +139,10 @@ export type PreferenceKind = 'sensitive_area' | 'do_not_capture';
 export type StudyCondition = 'basic_notice' | 'camera_footprint' | 'visual_exposure';
 
 export type StudyRole = 'participant' | 'facilitator';
+
+export type StudyLanguage = 'en' | 'zh';
+
+export type StudyStepId = 'briefing' | 'footprint' | 'exposure' | 'concerns' | 'options' | 'decision';
 
 export type LayerToggles = {
   buildings: boolean;

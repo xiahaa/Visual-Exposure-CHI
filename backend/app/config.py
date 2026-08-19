@@ -23,6 +23,9 @@ class ExposureEngineConfig(BaseModel):
     recognizability_d0_m: float = Field(gt=0)
     # Spacing between sampled camera poses along the route.
     route_sample_step_m: float = Field(gt=0)
+    # Reference camera sample count used to normalize exposure magnitude. Ray
+    # grids may then change numerical fidelity without changing the score scale.
+    reference_rays_per_pose: int = Field(default=3600, gt=0)
 
 
 class BackendConfig(BaseModel):

@@ -31,6 +31,13 @@ semantic layers.
     "ray_width": 80,
     "ray_height": 45
   },
+  "translations": {
+    "zh": {
+      "name": "住宅街区屋顶检查",
+      "task": "在维护作业完成后检查住宅建筑屋顶。",
+      "notice": "估计视觉暴露根据计划航线和相机设置计算。"
+    }
+  },
   "buildings": {},
   "semantic_layers": {}
 }
@@ -43,6 +50,47 @@ Computes estimated visual exposure for a route and camera configuration.
 The implementation samples the route, generates camera frustum rays for each
 pose, casts them against an Open3D `RaycastingScene`, maps first-hit triangles
 back to surface cells, and aggregates weighted surface-level exposure.
+
+Exposure is a relative geometric proxy rather than a probability or legal
+privacy determination. Per-ray contributions are normalized to
+`exposure.reference_rays_per_pose` from `backend/config/backend.yaml`. Camera
+ray grids can therefore change numerical fidelity without mechanically changing
+the score scale. Responses echo this value as
+`summary.config.reference_rays_per_pose` for reproducibility.
+
+The response also includes `pose_evidence`, a compact route profile used by the
+guided frontend to synchronize the map UAV, camera frustum, exposure timeline,
+and synthetic camera viewport:
+
+```json
+{
+  "pose_evidence": [
+    {
+      "pose_index": 0,
+      "distance_along_route_m": 0.0,
+      "route_fraction": 0.0,
+      "lon": 114.1688,
+      "lat": 22.3152,
+      "alt": 95.0,
+      "yaw": 25.0,
+      "gimbal_pitch_deg": -45.0,
+      "total_exposure": 1.84,
+      "sensitive_exposure": 0.62,
+      "visible_surface_count": 17,
+      "top_surface_ids": ["building_103_roof", "building_104_facade_east"]
+    }
+  ],
+  "exposure_surfaces": {},
+  "exposure_points": [],
+  "summary": {}
+}
+```
+
+Pose contributions use the same distance, incidence, semantic sensitivity, and
+reference ray-density normalization as the route summary. The sum of pose-level
+exposure therefore matches the corresponding summary total within floating
+point tolerance. `top_surface_ids` contains at most five first-hit surfaces per
+pose and is evidence metadata, not image-content recognition.
 
 ## `GET /api/scenarios/{scenario_id}/surfaces`
 

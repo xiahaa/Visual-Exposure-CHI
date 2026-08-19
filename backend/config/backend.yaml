@@ -3,6 +3,7 @@ exposure:
   max_range_m: 250.0
   recognizability_d0_m: 80.0
   route_sample_step_m: 5.0
+  reference_rays_per_pose: 3600
 
 camera_profiles:
   default_profile_id: inspection_balanced
