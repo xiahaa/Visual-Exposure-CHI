@@ -5,8 +5,11 @@ import './styles.css';
 
 const isWarmup = window.location.pathname === '/warmup' || window.location.pathname.startsWith('/warmup/');
 const isSetup = window.location.pathname === '/setup' || window.location.pathname.startsWith('/setup/');
+const isEventRunner = window.location.pathname === '/runner' || window.location.pathname.startsWith('/runner/');
 const RoutedExperience = isSetup
   ? lazy(() => import('./StudySetup').then((module) => ({ default: module.StudySetup })))
+  : isEventRunner
+    ? lazy(() => import('./EventStudyRunner').then((module) => ({ default: module.EventStudyRunner })))
   : isWarmup
     ? lazy(() => import('./WarmupExperience').then((module) => ({ default: module.WarmupExperience })))
     : lazy(() => import('./App').then((module) => ({ default: module.App })));

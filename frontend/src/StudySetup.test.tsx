@@ -26,6 +26,20 @@ describe('StudySetup', () => {
     expect(warmup).toHaveAttribute('href', expect.stringContaining('participant_id=P042'));
     expect(study).toHaveAttribute('href', expect.stringContaining('/?condition=c2'));
   });
+
+  it('builds a main-study runner URL for the selected event and disclosure cell', async () => {
+    render(<StudySetup />);
+    await screen.findByText('Balanced Inspection');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Profile D H-R' }));
+    await userEvent.click(screen.getByRole('button', { name: /S\s*Structured facts/ }));
+    await userEvent.selectOptions(screen.getByLabelText('Session language'), 'zh');
+
+    const runner = screen.getByRole('link', { name: /Open event runner/ });
+    expect(runner).toHaveAttribute('href', expect.stringContaining('/runner?profile=D'));
+    expect(runner).toHaveAttribute('href', expect.stringContaining('disclosure=S'));
+    expect(runner).toHaveAttribute('href', expect.stringContaining('lang=zh'));
+  });
 });
 
 function jsonResponse(data: unknown): Response {

@@ -1,6 +1,8 @@
-import { ArrowRight, Check, Clipboard, FlaskConical, RefreshCw } from 'lucide-react';
+import { ArrowRight, Check, Clapperboard, Clipboard, FlaskConical, RefreshCw } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { loadScenario } from './api';
+import type { DisclosureCondition, EventProfileId } from './eventProfiles';
+import { EVENT_PROFILES } from './eventProfiles';
 import { buildStudyUrl } from './studySession';
 import type { CameraProfile, StudyCondition, StudyLanguage } from './types';
 
@@ -10,6 +12,8 @@ export function StudySetup() {
   const [condition, setCondition] = useState<StudyCondition>('visual_exposure');
   const [language, setLanguage] = useState<StudyLanguage>('en');
   const [cameraProfileId, setCameraProfileId] = useState('inspection_balanced');
+  const [eventProfileId, setEventProfileId] = useState<EventProfileId>('A');
+  const [disclosureCondition, setDisclosureCondition] = useState<DisclosureCondition>('V');
   const [profiles, setProfiles] = useState<CameraProfile[]>([]);
   const [copied, setCopied] = useState<'warmup' | 'study' | null>(null);
 
@@ -30,6 +34,13 @@ export function StudySetup() {
   }), [cameraProfileId, condition, language, participantId, sessionId]);
   const warmupUrl = buildStudyUrl(window.location.origin, session, '/warmup');
   const studyUrl = buildStudyUrl(window.location.origin, session, '/');
+  const runnerUrl = buildRunnerUrl(window.location.origin, {
+    participantId,
+    sessionId,
+    language,
+    profile: eventProfileId,
+    disclosure: disclosureCondition,
+  });
 
   const copy = async (kind: 'warmup' | 'study', value: string) => {
     await navigator.clipboard.writeText(value);
@@ -74,11 +85,46 @@ export function StudySetup() {
             <label><span>Session language</span><select value={language} onChange={(event) => setLanguage(event.target.value as StudyLanguage)}><option value="en">English</option><option value="zh">中文</option></select></label>
             <label><span>Camera profile</span><select value={cameraProfileId} onChange={(event) => setCameraProfileId(event.target.value)}>{profiles.length ? profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>) : <option value="inspection_balanced">Balanced Inspection</option>}</select></label>
           </div>
+
+          <div className="setup-section-title main-study-title"><span>04</span><div><strong>Main-study media cell</strong><small>Choose one of four event profiles and one disclosure renderer.</small></div></div>
+          <div className="event-profile-grid" aria-label="Event profile">
+            {(Object.values(EVENT_PROFILES)).map((profile) => (
+              <button
+                key={profile.id}
+                className={eventProfileId === profile.id ? 'selected' : ''}
+                type="button"
+                onClick={() => setEventProfileId(profile.id)}
+                aria-label={`Profile ${profile.id} ${profile.code}`}
+              >
+                <span>{profile.id}</span>
+                <div><strong>{profile.code}</strong><small>{profile.trajectoryId === 'slow_offset' ? 'Slow · camera offset' : 'Fast · target tracking'}</small></div>
+                <i className={profile.uavAppearance}>{profile.uavAppearance === 'police' ? 'POLICE' : 'CIVIL'}</i>
+                {eventProfileId === profile.id && <Check size={15} />}
+              </button>
+            ))}
+          </div>
+          <div className="disclosure-choice" aria-label="Disclosure condition">
+            {([['M', 'Notice'], ['S', 'Structured facts'], ['V', 'Interactive VEP']] as const).map(([value, label]) => (
+              <button key={value} type="button" className={disclosureCondition === value ? 'selected' : ''} onClick={() => setDisclosureCondition(value)}>
+                <span>{value}</span><strong>{label}</strong>
+              </button>
+            ))}
+          </div>
         </div>
 
         <aside className="setup-launch">
           <p className="setup-kicker">Ready to launch</p>
           <h2>{participantId || 'Participant'}</h2>
+          <div className="runner-launch-summary">
+            <div><Clapperboard size={18} /><span>Main-study runner</span></div>
+            <strong>Profile {eventProfileId} · {EVENT_PROFILES[eventProfileId].code}</strong>
+            <p>{EVENT_PROFILES[eventProfileId].title.en}</p>
+            <span>{disclosureCondition === 'M' ? 'M Notice' : disclosureCondition === 'S' ? 'S Structured Facts' : 'V Interactive VEP'} · {language === 'zh' ? '中文' : 'English'}</span>
+          </div>
+          <a className="setup-primary runner-launch" href={runnerUrl}>Open event runner <ArrowRight size={17} /></a>
+          <div className="setup-pair-proof"><Check size={14} /><span>{eventProfileId === 'A' || eventProfileId === 'B' ? 'A/B use identical flight geometry' : 'C/D use identical flight geometry'}</span></div>
+
+          <div className="legacy-setup-divider"><span>Legacy calibration tools</span></div>
           <div className="setup-summary"><span>{condition === 'basic_notice' ? 'C1 Basic Notice' : condition === 'camera_footprint' ? 'C2 Route + Footprint' : 'C3 Visual Exposure'}</span><span>{language === 'zh' ? '中文' : 'English'}</span><span>{cameraProfileId.replaceAll('_', ' ')}</span></div>
           <div className="launch-link"><div><small>Start with calibration</small><strong>/warmup</strong></div><button title="Copy warm-up URL" aria-label="Copy warm-up URL" onClick={() => void copy('warmup', warmupUrl)}>{copied === 'warmup' ? <Check size={16} /> : <Clipboard size={16} />}</button></div>
           <a className="setup-primary" href={warmupUrl}>Open participant warm-up <ArrowRight size={17} /></a>
@@ -93,4 +139,20 @@ export function StudySetup() {
 
 function createSessionId(): string {
   return `S-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+}
+
+function buildRunnerUrl(origin: string, options: {
+  participantId: string;
+  sessionId: string;
+  language: StudyLanguage;
+  profile: EventProfileId;
+  disclosure: DisclosureCondition;
+}) {
+  const url = new URL('/runner', origin);
+  url.searchParams.set('profile', options.profile);
+  url.searchParams.set('disclosure', options.disclosure);
+  url.searchParams.set('lang', options.language);
+  url.searchParams.set('participant_id', options.participantId);
+  url.searchParams.set('session_id', options.sessionId);
+  return url.toString();
 }
