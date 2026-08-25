@@ -110,7 +110,14 @@ export function sampleEventPose(profile: EventProfile, time: number): EventPose 
     const x = lerp(-23, 23, easeInOut(progress));
     const y = TARGET_BALCONY.y + 7.5 + Math.sin(progress * Math.PI) * 0.8;
     const z = 13.5;
-    const cameraTarget: [number, number, number] = [x + 38, y - 2, z + 34];
+    // The camera points across the street toward the opposite facade. This is
+    // still well away from the resident, but produces an intelligible UAV
+    // first-person image instead of an empty sky/ground frame.
+    const cameraTarget: [number, number, number] = [12, 27, 75];
+    const cameraDistance = Math.hypot(
+      cameraTarget[0] - x,
+      cameraTarget[2] - z,
+    );
     return {
       time,
       progress,
@@ -119,13 +126,15 @@ export function sampleEventPose(profile: EventProfile, time: number): EventPose 
       residentVisible: false,
       exposure: 0,
       distanceToBalconyM: distance3([x, y, z], [TARGET_BALCONY.x, TARGET_BALCONY.y, TARGET_BALCONY.z]),
-      gimbalPitchDeg: -8,
+      gimbalPitchDeg: -Math.atan2(y - cameraTarget[1], cameraDistance) * 180 / Math.PI,
     };
   }
 
   const x = lerp(-72, 72, easeInOut(progress));
   const y = TARGET_BALCONY.y + 10 + Math.sin(progress * Math.PI) * 1.2;
-  const z = 40;
+  // Keep the high-exposure pass 30% farther from the target facade than the
+  // previous 40 m implementation while preserving target tracking.
+  const z = 52;
   const inViewWeight = smoothWindow(progress, 0.24, 0.34, 0.68, 0.78);
   const cameraTarget: [number, number, number] = [
     TARGET_BALCONY.x,

@@ -11,7 +11,7 @@ complete low-altitude traffic platform.
 
 ```text
 frontend/
-  React + deck.gl map interface
+  React + deck.gl evidence workbench and Three.js study media runner
 
 backend/
   FastAPI service and Open3D-based visibility engine
@@ -22,6 +22,22 @@ data/scenarios/
 docs/
   Research framing, API contracts, and implementation notes
 ```
+
+## Implemented Research Flows
+
+- Guided C1/C2/C3 visual-exposure study with strict condition isolation.
+- Hong Kong scenario loading, Open3D first-hit exposure estimation, route
+  evidence, preference marking, and candidate-based privacy alternatives.
+- Four synchronized UAV event profiles (A-D) with M/S/V disclosure conditions,
+  third-person context, resident view, and synthetic UAV-camera view.
+- Anonymous server-side study-cell assignment with configurable capacities,
+  persistent event/response ingestion, completion-code issuance, code-based
+  auditing, and structured export.
+
+The participant runner is opened at `/runner`. A participant URL may include an
+opaque `entry_token`, but it does not select a profile or disclosure condition:
+the backend assigns the experimental cell. `/setup` provides facilitator links
+and a separate preview mode that does not write study data.
 
 ## Deployment
 
@@ -41,6 +57,16 @@ After the Hugging Face Space is live, set the Vercel environment variable:
 VITE_API_BASE_URL=https://<user-or-org>-<space-name>.hf.space
 ```
 
+For a live study, mount persistent storage in the backend and set:
+
+```text
+VEP_STUDY_DB_PATH=/data/study_sessions.sqlite3
+VEP_ADMIN_KEY=<researcher-only secret>
+```
+
+SQLite is intended for one deployed backend instance with moderate concurrent
+study traffic. Use PostgreSQL before running multiple backend replicas.
+
 See `docs/HF_SPACES_DEPLOYMENT.md` for the full checklist.
 
 ## Core Principle
@@ -59,3 +85,4 @@ annotate, and reason about it.
 6. Render buildings, route, exposure cells, and annotations in deck.gl. Done.
 7. Add before/after comparison and experiment logging. Done.
 8. Add candidate-based privacy option generation for suggested route/camera alternatives. Done.
+9. Add balanced study-cell assignment, persistent event ingestion, completion codes, and structured research export. Done.

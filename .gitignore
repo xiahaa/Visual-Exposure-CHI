@@ -12,6 +12,9 @@ dist/
 *.log
 *.jsonl
 *-test-results.json
+*.sqlite3
+*.sqlite3-*
+*.sqlite3.secret
 
 # OS/editor
 .DS_Store

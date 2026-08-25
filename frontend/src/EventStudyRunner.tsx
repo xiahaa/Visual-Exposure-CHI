@@ -1,6 +1,7 @@
 import {
   ArrowRight,
   CheckCircle2,
+  Clipboard,
   Database,
   Eye,
   FileText,
@@ -15,6 +16,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EventMediaScene, type EventSceneMode } from './EventMediaScene';
 import {
+  EVENT_PROFILES,
   EVENT_DURATION_SECONDS,
   readDisclosureCondition,
   readEventProfile,
@@ -22,6 +24,16 @@ import {
   type DisclosureCondition,
   type EventProfile,
 } from './eventProfiles';
+import {
+  appendStudyEvents,
+  completeStudy,
+  confirmStudyStart,
+  createStudyEvent,
+  getOrCreateClientNonce,
+  launchStudy,
+  updateStudyPhase,
+  type AssignedStudySession,
+} from './studyApi';
 import type { StudyLanguage } from './types';
 
 type RunnerPhase = 'ready' | 'attention' | 'initial_media' | 'disclosure' | 'complete';
@@ -31,12 +43,25 @@ const FRAME_INTERVAL_MS = 40;
 
 export function EventStudyRunner() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
-  const profile = useMemo(() => readEventProfile(params.get('profile')), [params]);
-  const condition = useMemo(() => readDisclosureCondition(params.get('disclosure')), [params]);
+  const facilitatorMode = params.get('role') === 'facilitator';
+  const manualProfile = useMemo(() => readEventProfile(params.get('profile')), [params]);
+  const manualCondition = useMemo(() => readDisclosureCondition(params.get('disclosure')), [params]);
   const language: StudyLanguage = params.get('lang') === 'zh' ? 'zh' : 'en';
-  const participantId = params.get('participant_id') || 'P001';
-  const sessionId = params.get('session_id') || 'preview-session';
-  const previewDisclosure = params.get('role') === 'facilitator' && params.get('preview') === 'disclosure';
+  const previewDisclosure = facilitatorMode && params.get('preview') === 'disclosure';
+  const [assignment, setAssignment] = useState<AssignedStudySession | null>(null);
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
+  const [assignmentAttempt, setAssignmentAttempt] = useState(0);
+  const [completionCode, setCompletionCode] = useState<string | null>(null);
+  const [completionError, setCompletionError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const profile = facilitatorMode ? manualProfile : assignment ? EVENT_PROFILES[assignment.profile] : manualProfile;
+  const condition = facilitatorMode ? manualCondition : assignment?.disclosure_condition ?? manualCondition;
+  const participantId = facilitatorMode
+    ? params.get('participant_id') || 'Preview'
+    : text(language, 'Anonymous', '匿名参与者');
+  const sessionId = assignment?.session_id
+    ?? (facilitatorMode ? params.get('session_id') || 'preview-session' : 'Assigning...');
   const [phase, setPhase] = useState<RunnerPhase>(previewDisclosure ? 'disclosure' : 'ready');
   const [countdown, setCountdown] = useState(3);
   const [time, setTime] = useState(previewDisclosure ? EVENT_DURATION_SECONDS / 2 : 0);
@@ -44,6 +69,8 @@ export function EventStudyRunner() {
   const [activeTab, setActiveTab] = useState<VepTab>('overview');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const mediaRef = useRef<HTMLElement | null>(null);
+  const studyTokenRef = useRef<string | null>(null);
+  const eventSequenceRef = useRef(Math.floor(Date.now() / 10));
 
   const pose = useMemo(() => sampleEventPose(profile, time), [profile, time]);
   const facts = useMemo(() => buildDisclosureFacts(profile, language), [language, profile]);
@@ -51,6 +78,36 @@ export function EventStudyRunner() {
   useEffect(() => {
     document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
   }, [language]);
+
+  useEffect(() => {
+    if (facilitatorMode) return;
+    let cancelled = false;
+    setAssignmentError(null);
+    launchStudy({
+      clientNonce: getOrCreateClientNonce(),
+      entryToken: params.get('entry_token') || undefined,
+      language,
+    }).then((session) => {
+      if (cancelled) return;
+      if (!session.session_token) throw new Error('The study service did not issue a session token');
+      studyTokenRef.current = session.session_token;
+      setAssignment(session);
+      if (session.completion_code) {
+        setCompletionCode(session.completion_code);
+        setPhase('complete');
+      } else if (session.phase === 'disclosure' || session.phase === 'initial_media') {
+        // Never replay the one-time stimulus after a refresh. If the browser
+        // closed during playback, resume at disclosure instead.
+        setTime(0);
+        setPhase('disclosure');
+      } else if (session.phase === 'attention' || session.phase === 'attention_prompt_3s') {
+        setPhase('attention');
+      }
+    }).catch((reason: unknown) => {
+      if (!cancelled) setAssignmentError(reason instanceof Error ? reason.message : 'Study assignment failed');
+    });
+    return () => { cancelled = true; };
+  }, [assignmentAttempt, facilitatorMode, language, params]);
 
   useEffect(() => {
     const onFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
@@ -101,7 +158,100 @@ export function EventStudyRunner() {
     }
   }, []);
 
-  const begin = () => setPhase('attention');
+  const recordEvent = useCallback(async (
+    eventType: string,
+    eventPhase: string,
+    payload: Record<string, unknown> = {},
+  ) => {
+    const token = studyTokenRef.current;
+    if (!token || facilitatorMode) return;
+    await appendStudyEvents(token, [
+      createStudyEvent(eventSequenceRef.current++, eventType, eventPhase, payload),
+    ]);
+  }, [facilitatorMode]);
+
+  useEffect(() => {
+    const token = studyTokenRef.current;
+    if (!token || facilitatorMode || phase === 'ready' || phase === 'complete') return;
+    void updateStudyPhase(token, phase).catch(() => undefined);
+    if (phase === 'initial_media') {
+      void recordEvent('initial_media_started', phase).catch(() => undefined);
+    }
+    if (phase === 'disclosure') {
+      void recordEvent('initial_media_completed', 'initial_media').catch(() => undefined);
+      void recordEvent('disclosure_view_entered', phase, { condition }).catch(() => undefined);
+    }
+  }, [condition, facilitatorMode, phase, recordEvent]);
+
+  const begin = async () => {
+    if (!facilitatorMode) {
+      const token = studyTokenRef.current;
+      if (!token) return;
+      setSubmitting(true);
+      setAssignmentError(null);
+      try {
+        await confirmStudyStart(token);
+        await recordEvent('study_start_confirmed', 'ready');
+      } catch (reason) {
+        setAssignmentError(reason instanceof Error ? reason.message : 'Unable to start the study');
+        setSubmitting(false);
+        return;
+      }
+      setSubmitting(false);
+    }
+    setPhase('attention');
+  };
+
+  const enterComplete = useCallback(async () => {
+    if (facilitatorMode) {
+      setPhase('complete');
+      return;
+    }
+    const token = studyTokenRef.current;
+    if (!token) return;
+    setSubmitting(true);
+    setCompletionError(null);
+    try {
+      // Repeat the milestone event names in one final batch. This closes any
+      // transition race if a browser loses focus while media is advancing.
+      await appendStudyEvents(token, [
+        createStudyEvent(eventSequenceRef.current++, 'initial_media_completed', 'initial_media'),
+        createStudyEvent(eventSequenceRef.current++, 'disclosure_view_entered', 'disclosure'),
+        createStudyEvent(eventSequenceRef.current++, 'media_review_completed', 'disclosure', { condition }),
+      ]);
+      const completed = await completeStudy(token);
+      setCompletionCode(completed.completion_code);
+      setPhase('complete');
+    } catch (reason) {
+      setCompletionError(reason instanceof Error ? reason.message : 'Completion code could not be issued');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [condition, facilitatorMode]);
+
+  if (!facilitatorMode && !assignment) {
+    return (
+      <main className="runner-shell runner-ready">
+        <section className="runner-ready-card runner-assignment-card">
+          <div className="runner-status-mark"><ShieldCheck size={24} /></div>
+          <p className="runner-eyebrow">{text(language, 'Secure study entry', '安全进入实验')}</p>
+          <h1>{assignmentError
+            ? text(language, 'The study session could not be assigned.', '暂时无法分配实验场次。')
+            : text(language, 'Assigning your study session...', '正在分配你的实验场次……')}</h1>
+          <p>{assignmentError || text(
+            language,
+            'Your study condition is assigned automatically. No personal identity is requested.',
+            '实验条件由系统自动分配，不收集个人身份信息。',
+          )}</p>
+          {assignmentError ? (
+            <button className="runner-primary" type="button" onClick={() => setAssignmentAttempt((value) => value + 1)}>
+              {text(language, 'Retry', '重试')} <RotateCcw size={17} />
+            </button>
+          ) : <div className="runner-loading-bar" aria-label={text(language, 'Assigning session', '正在分配场次')}><i /></div>}
+        </section>
+      </main>
+    );
+  }
 
   if (phase === 'ready') {
     return (
@@ -120,9 +270,10 @@ export function EventStudyRunner() {
             <span><small>{text(language, 'Session', '场次')}</small>{sessionId}</span>
             <span><small>{text(language, 'Estimated time', '预计时长')}</small>3–5 min</span>
           </div>
-          <button className="runner-primary" type="button" onClick={begin}>
+          <button className="runner-primary" type="button" onClick={() => void begin()} disabled={submitting}>
             {text(language, 'I am ready', '我已准备好')} <ArrowRight size={18} />
           </button>
+          {assignmentError && <p className="runner-inline-error">{assignmentError}</p>}
           <p className="runner-synthetic-note">
             {text(language, 'All scenes are synthetic. No real resident footage is used.', '全部场景均为合成画面，不包含真实居民影像。')}
           </p>
@@ -176,7 +327,7 @@ export function EventStudyRunner() {
 
   if (phase === 'disclosure') {
     if (condition === 'M') {
-      return <NoticeDisclosure language={language} onContinue={() => setPhase('complete')} />;
+      return <NoticeDisclosure language={language} onContinue={() => void enterComplete()} disabled={submitting} error={completionError} />;
     }
     return (
       <main className="runner-shell runner-disclosure-shell">
@@ -233,9 +384,10 @@ export function EventStudyRunner() {
         )}
 
         <div className="runner-disclosure-next">
-          <button className="runner-primary" type="button" onClick={() => setPhase('complete')}>
-            {text(language, 'Continue', '继续')} <ArrowRight size={18} />
+          <button className="runner-primary" type="button" onClick={() => void enterComplete()} disabled={submitting}>
+            {submitting ? text(language, 'Issuing completion code...', '正在签发完成码……') : text(language, 'Finish review', '完成查看')} <ArrowRight size={18} />
           </button>
+          {completionError && <p className="runner-inline-error">{completionError}</p>}
         </div>
       </main>
     );
@@ -246,13 +398,26 @@ export function EventStudyRunner() {
       <section>
         <CheckCircle2 size={34} />
         <p className="runner-eyebrow">{text(language, 'Media review complete', '媒体查看完成')}</p>
-        <h1>{text(language, 'This prototype stops before the question sequence.', '当前原型在题目流程前结束。')}</h1>
-        <p>{text(
-          language,
-          'Question fields are intentionally not connected yet. The synchronized media, condition-specific disclosure, and interface flow are ready for review.',
-          '问题字段尚未接入。本版已完成同步动画、分条件披露与界面流程，供当前评审使用。',
-        )}</p>
-        <a className="runner-secondary" href="/setup">{text(language, 'Return to facilitator setup', '返回主持人设置')}</a>
+        <h1>{completionCode
+          ? text(language, 'Your completion code is ready.', '你的实验完成码已生成。')
+          : text(language, 'Facilitator preview complete.', '主持人预览已完成。')}</h1>
+        {completionCode ? (
+          <>
+            <p>{text(language, 'Enter this code in the questionnaire. It links your questionnaire submission to this completed VEP session.', '请将此代码填入问卷。它用于将问卷提交与本次已完成的 VEP 实验记录对应起来。')}</p>
+            <div className="completion-code" aria-label={text(language, 'Completion code', '实验完成码')}>
+              <span>{completionCode}</span>
+              <button type="button" onClick={() => {
+                void navigator.clipboard.writeText(completionCode);
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1600);
+              }}><Clipboard size={17} />{copied ? text(language, 'Copied', '已复制') : text(language, 'Copy code', '复制完成码')}</button>
+            </div>
+            <p className="completion-warning">{text(language, 'Keep this page open until you have entered the code.', '请在完成码填入问卷前保持此页面开启。')}</p>
+          </>
+        ) : (
+          <p>{text(language, 'No study record or completion code is issued in facilitator preview mode.', '主持人预览模式不会写入实验记录，也不会签发完成码。')}</p>
+        )}
+        {facilitatorMode && <a className="runner-secondary" href="/setup">{text(language, 'Return to facilitator setup', '返回主持人设置')}</a>}
       </section>
     </main>
   );
@@ -423,7 +588,17 @@ function FactRow({ fact }: { fact: DisclosureFact }) {
   );
 }
 
-function NoticeDisclosure({ language, onContinue }: { language: StudyLanguage; onContinue: () => void }) {
+function NoticeDisclosure({
+  language,
+  onContinue,
+  disabled = false,
+  error,
+}: {
+  language: StudyLanguage;
+  onContinue: () => void;
+  disabled?: boolean;
+  error?: string | null;
+}) {
   return (
     <main className="runner-shell notice-shell">
       <section className="notice-card">
@@ -436,7 +611,8 @@ function NoticeDisclosure({ language, onContinue }: { language: StudyLanguage; o
           <div><dt>{text(language, 'Filing', '备案号')}</dt><dd>VEP-2026-081</dd></div>
           <div><dt>{text(language, 'Contact', '联系方式')}</dt><dd>privacy-liaison@example.org</dd></div>
         </dl>
-        <button className="runner-primary" type="button" onClick={onContinue}>{text(language, 'Continue', '继续')} <ArrowRight size={18} /></button>
+        <button className="runner-primary" type="button" onClick={onContinue} disabled={disabled}>{disabled ? text(language, 'Issuing completion code...', '正在签发完成码……') : text(language, 'Finish review', '完成查看')} <ArrowRight size={18} /></button>
+        {error && <p className="runner-inline-error">{error}</p>}
       </section>
     </main>
   );

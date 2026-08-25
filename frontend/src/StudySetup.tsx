@@ -34,12 +34,14 @@ export function StudySetup() {
   }), [cameraProfileId, condition, language, participantId, sessionId]);
   const warmupUrl = buildStudyUrl(window.location.origin, session, '/warmup');
   const studyUrl = buildStudyUrl(window.location.origin, session, '/');
-  const runnerUrl = buildRunnerUrl(window.location.origin, {
-    participantId,
-    sessionId,
+  const runnerUrl = buildAssignedRunnerUrl(window.location.origin, {
+    entryToken: sessionId,
     language,
+  });
+  const runnerPreviewUrl = buildRunnerPreviewUrl(window.location.origin, {
     profile: eventProfileId,
     disclosure: disclosureCondition,
+    language,
   });
 
   const copy = async (kind: 'warmup' | 'study', value: string) => {
@@ -116,12 +118,20 @@ export function StudySetup() {
           <p className="setup-kicker">Ready to launch</p>
           <h2>{participantId || 'Participant'}</h2>
           <div className="runner-launch-summary">
-            <div><Clapperboard size={18} /><span>Main-study runner</span></div>
+            <div><Clapperboard size={18} /><span>Server-assigned main study</span></div>
+            <strong>Balanced anonymous allocation</strong>
+            <p>The backend assigns one available profile and disclosure cell, then issues a completion code.</p>
+            <span>{language === 'zh' ? '中文' : 'English'} · Entry token {sessionId}</span>
+          </div>
+          <a className="setup-primary runner-launch" href={runnerUrl}>Open assigned study <ArrowRight size={17} /></a>
+
+          <div className="runner-launch-summary preview-summary">
+            <div><Clapperboard size={18} /><span>Facilitator preview</span></div>
             <strong>Profile {eventProfileId} · {EVENT_PROFILES[eventProfileId].code}</strong>
             <p>{EVENT_PROFILES[eventProfileId].title.en}</p>
-            <span>{disclosureCondition === 'M' ? 'M Notice' : disclosureCondition === 'S' ? 'S Structured Facts' : 'V Interactive VEP'} · {language === 'zh' ? '中文' : 'English'}</span>
+            <span>{disclosureCondition === 'M' ? 'M Notice' : disclosureCondition === 'S' ? 'S Structured Facts' : 'V Interactive VEP'} · no study record</span>
           </div>
-          <a className="setup-primary runner-launch" href={runnerUrl}>Open event runner <ArrowRight size={17} /></a>
+          <a className="setup-secondary" href={runnerPreviewUrl}>Preview selected cell</a>
           <div className="setup-pair-proof"><Check size={14} /><span>{eventProfileId === 'A' || eventProfileId === 'B' ? 'A/B use identical flight geometry' : 'C/D use identical flight geometry'}</span></div>
 
           <div className="legacy-setup-divider"><span>Legacy calibration tools</span></div>
@@ -141,18 +151,26 @@ function createSessionId(): string {
   return `S-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
 }
 
-function buildRunnerUrl(origin: string, options: {
-  participantId: string;
-  sessionId: string;
+function buildAssignedRunnerUrl(origin: string, options: {
+  entryToken: string;
   language: StudyLanguage;
-  profile: EventProfileId;
-  disclosure: DisclosureCondition;
 }) {
   const url = new URL('/runner', origin);
+  url.searchParams.set('lang', options.language);
+  url.searchParams.set('entry_token', options.entryToken);
+  return url.toString();
+}
+
+function buildRunnerPreviewUrl(origin: string, options: {
+  profile: EventProfileId;
+  disclosure: DisclosureCondition;
+  language: StudyLanguage;
+}) {
+  const url = new URL('/runner', origin);
+  url.searchParams.set('role', 'facilitator');
+  url.searchParams.set('preview', 'disclosure');
   url.searchParams.set('profile', options.profile);
   url.searchParams.set('disclosure', options.disclosure);
   url.searchParams.set('lang', options.language);
-  url.searchParams.set('participant_id', options.participantId);
-  url.searchParams.set('session_id', options.sessionId);
   return url.toString();
 }

@@ -41,3 +41,20 @@ camera_profiles:
         ray_height: 68
         min_depth_m: 5.0
         max_depth_m: 140.0
+
+study:
+  database_path: data/study_sessions.sqlite3
+  completion_code_prefix: VEP
+  completion_code_length: 8
+  admin_key_env: VEP_ADMIN_KEY
+  event_batch_limit: 100
+  question_config_version: main-study-draft-v1
+  required_completion_events:
+    - initial_media_completed
+    - disclosure_view_entered
+    - media_review_completed
+  cell_capacities:
+    A: {M: 100, S: 100, V: 100}
+    B: {M: 100, S: 100, V: 100}
+    C: {M: 100, S: 100, V: 100}
+    D: {M: 100, S: 100, V: 100}

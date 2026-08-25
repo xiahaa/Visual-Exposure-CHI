@@ -195,3 +195,32 @@ Current candidate strategies include altitude adjustment, lateral detour,
 depth-limited camera, and combined variants. Routes are densified before
 candidate adjustment so long segments near preference polygons can respond even
 when their endpoints are far away.
+
+## Study Assignment And Completion APIs
+
+The main-study runner uses an anonymous server-issued session rather than
+accepting a profile or disclosure condition from the participant URL.
+
+- `POST /api/study/launch` atomically assigns an available A-D x M/S/V cell.
+  The request contains a browser nonce and an optional opaque questionnaire
+  `entry_token`; only one-way hashes are stored.
+- `POST /api/study/confirm-start` locks the start timestamp.
+- `POST /api/study/state` stores the current phase.
+- `POST /api/study/events` accepts idempotent event batches.
+- `POST /api/study/responses` upserts structured question responses.
+- `POST /api/study/complete` verifies required milestones and returns the
+  participant's unique completion code.
+
+All endpoints after launch require the returned token in `X-Study-Token`.
+Assignment is balanced among the least-filled cells and never exceeds the
+per-cell limits in `backend/config/backend.yaml`.
+
+Researcher endpoints require `X-Admin-Key`, whose expected value is read from
+the environment variable named by `study.admin_key_env`:
+
+- `POST /api/study/verify-code` checks whether a questionnaire code is valid.
+- `GET /api/admin/study-results/{completion_code}` resolves a code to its
+  session, responses, and ordered event record.
+- `GET /api/admin/study-pool` reports assignment counts and remaining capacity.
+- `GET /api/admin/export/all` downloads a ZIP with session/response CSV files,
+  event JSONL, and an export manifest.

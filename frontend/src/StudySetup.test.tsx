@@ -27,7 +27,7 @@ describe('StudySetup', () => {
     expect(study).toHaveAttribute('href', expect.stringContaining('/?condition=c2'));
   });
 
-  it('builds a main-study runner URL for the selected event and disclosure cell', async () => {
+  it('keeps participant assignment server-side and builds a separate cell preview URL', async () => {
     render(<StudySetup />);
     await screen.findByText('Balanced Inspection');
 
@@ -35,9 +35,14 @@ describe('StudySetup', () => {
     await userEvent.click(screen.getByRole('button', { name: /S\s*Structured facts/ }));
     await userEvent.selectOptions(screen.getByLabelText('Session language'), 'zh');
 
-    const runner = screen.getByRole('link', { name: /Open event runner/ });
-    expect(runner).toHaveAttribute('href', expect.stringContaining('/runner?profile=D'));
-    expect(runner).toHaveAttribute('href', expect.stringContaining('disclosure=S'));
+    const runner = screen.getByRole('link', { name: /Open assigned study/ });
+    expect(runner).toHaveAttribute('href', expect.stringContaining('/runner?lang=zh'));
+    expect(runner).not.toHaveAttribute('href', expect.stringContaining('profile='));
+    expect(runner).not.toHaveAttribute('href', expect.stringContaining('disclosure='));
+    const preview = screen.getByRole('link', { name: /Preview selected cell/ });
+    expect(preview).toHaveAttribute('href', expect.stringContaining('role=facilitator'));
+    expect(preview).toHaveAttribute('href', expect.stringContaining('profile=D'));
+    expect(preview).toHaveAttribute('href', expect.stringContaining('disclosure=S'));
     expect(runner).toHaveAttribute('href', expect.stringContaining('lang=zh'));
   });
 });

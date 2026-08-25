@@ -12,12 +12,14 @@ vi.mock('./EventMediaScene', () => ({
 describe('EventStudyRunner', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    window.history.pushState({}, '', '/runner?profile=C&disclosure=V&lang=en&participant_id=P011&session_id=S011');
+    window.localStorage.clear();
+    window.history.pushState({}, '', '/runner?role=facilitator&profile=C&disclosure=V&lang=en&participant_id=P011&session_id=S011');
   });
 
   afterEach(() => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('locks the initial dual view and then reveals synchronized triple-view evidence', async () => {
@@ -46,7 +48,7 @@ describe('EventStudyRunner', () => {
   });
 
   it('shows only a notice after the one-time media for condition M', async () => {
-    window.history.pushState({}, '', '/runner?profile=B&disclosure=M&lang=zh');
+    window.history.pushState({}, '', '/runner?role=facilitator&profile=B&disclosure=M&lang=zh');
     render(<EventStudyRunner />);
     fireEvent.click(screen.getByRole('button', { name: '我已准备好' }));
     await act(async () => vi.advanceTimersByTime(3100));
@@ -56,4 +58,63 @@ describe('EventStudyRunner', () => {
     expect(screen.queryByLabelText('同步事件时间轴')).not.toBeInTheDocument();
     expect(screen.queryByTestId('scene-camera')).not.toBeInTheDocument();
   });
+
+  it('uses the server-assigned cell and issues a questionnaire completion code', async () => {
+    window.history.pushState({}, '', '/runner?profile=A&disclosure=M&lang=en&entry_token=survey-entry-77');
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/api/study/launch')) {
+        return jsonResponse({
+          session_id: 'server-session-77',
+          session_token: 'signed-session-token',
+          profile: 'D',
+          disclosure_condition: 'S',
+          status: 'active',
+          phase: 'assignment_locked',
+          question_config_version: 'main-study-draft-v1',
+          completion_code: null,
+        });
+      }
+      if (url.endsWith('/api/study/complete')) {
+        return jsonResponse({
+          session_id: 'server-session-77',
+          completion_code: 'VEP-ABCD2345',
+          profile: 'D',
+          disclosure_condition: 'S',
+          completed_at: '2026-08-25T00:00:00Z',
+        });
+      }
+      if (url.endsWith('/api/study/events')) {
+        return jsonResponse({ accepted: 3, duplicates: 0, last_seq: 3 });
+      }
+      return jsonResponse({
+        session_id: 'server-session-77',
+        profile: 'D',
+        disclosure_condition: 'S',
+        status: 'active',
+        phase: 'attention_prompt_3s',
+        question_config_version: 'main-study-draft-v1',
+      });
+    });
+
+    render(<EventStudyRunner />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(screen.getByText('server-session-77')).toBeInTheDocument();
+    expect(screen.getByText('Anonymous')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /I am ready/ }));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => vi.advanceTimersByTime(3100));
+    await act(async () => vi.advanceTimersByTime(24_200));
+    expect(screen.getByText('Structured facts')).toBeInTheDocument();
+    expect(screen.getByTestId('scene-camera')).toHaveAttribute('data-profile', 'D');
+
+    fireEvent.click(screen.getByRole('button', { name: /Finish review/ }));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(screen.getByText('VEP-ABCD2345')).toBeInTheDocument();
+  });
 });
+
+function jsonResponse(data: unknown): Response {
+  return { ok: true, status: 200, statusText: 'OK', json: async () => data } as Response;
+}

@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .models import CompareRequest, ExposureRequest, PlanningRequest
 from .scenario_store import load_prepared_mesh, load_scenario, load_surface_cells
+from .study_routes import router as study_router
 
 # Navigate from backend/app/main.py back to the repository root.
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -35,6 +36,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(study_router)
 
 
 if FRONTEND_ASSETS_DIR.exists():

@@ -37,14 +37,14 @@ D:\CHI\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 
 ```powershell
 cd backend
-python -m unittest discover -s tests
+python -m pytest tests -q
 ```
 
 Using the shared Windows venv:
 
 ```powershell
 cd D:\CHI\backend
-D:\CHI\.venv\Scripts\python.exe -m unittest discover -s tests
+D:\CHI\.venv\Scripts\python.exe -m pytest tests -q
 ```
 
 ## Configuration
@@ -61,9 +61,40 @@ exposure:
 Change this file to tune raycasting range, distance weighting, or route sampling
 without editing Python code.
 
+Study assignment limits and completion requirements are configured under
+`study` in the same YAML file. For deployment, set:
+
+```text
+VEP_ADMIN_KEY=<researcher-only secret>
+VEP_STUDY_DB_PATH=/persistent/path/study_sessions.sqlite3
+```
+
+`VEP_STUDY_DB_PATH` should point to persistent storage. SQLite runs in WAL mode
+and assignment uses an immediate transaction, so concurrent workers share the
+same per-cell capacity limits. Do not place the database in an ephemeral
+container directory for a live study.
+
+## Study Data Service
+
+Participant endpoints under `/api/study` support anonymous launch, start
+confirmation, phase updates, idempotent event batches, response batches, and
+completion-code issuance. Researcher endpoints support pool monitoring,
+completion-code lookup, and ZIP export:
+
+```text
+GET /api/admin/study-pool
+GET /api/admin/study-results/{completion_code}
+GET /api/admin/export/all
+```
+
+Researcher requests require `X-Admin-Key`. Per-cell capacities and required
+completion events are defined in `config/backend.yaml`; restart the backend
+after changing them. See `docs/API.md` for request and response details.
+
 ## Near-Term Tasks
 
 1. Continue validating Open3D first-hit raycasting against small synthetic geometry cases.
 2. Expand planner validation for route/camera alternatives near complex preference polygons.
 3. Keep scenario and camera parameters in YAML so study runs remain reproducible.
 4. Profile Hong Kong scenario latency after each planning or exposure-engine change.
+5. Freeze the study cell capacities and completion-event requirements before data collection.

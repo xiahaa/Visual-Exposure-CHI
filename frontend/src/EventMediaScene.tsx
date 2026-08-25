@@ -59,10 +59,10 @@ function createSceneRuntime(host: HTMLDivElement, mode: EventSceneMode, profile:
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  // The study stimulus prioritizes legibility over cinematic contrast. Direct
-  // color rendering keeps the UAV markings and resident silhouette readable
-  // on dim laboratory displays.
-  renderer.toneMapping = THREE.NoToneMapping;
+  // A restrained filmic curve preserves facade/window contrast while keeping
+  // UAV markings and the resident silhouette readable on laboratory displays.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.domElement.className = 'event-scene-canvas';
@@ -71,7 +71,9 @@ function createSceneRuntime(host: HTMLDivElement, mode: EventSceneMode, profile:
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(mode === 'camera' ? 0xb7d0d5 : 0xc2dce3);
-  scene.fog = new THREE.FogExp2(0xc3d6d7, mode === 'external' ? 0.0017 : 0.0022);
+  // Fog previously read as a gray disclosure overlay. The study view now uses
+  // direct atmospheric colors so every pixel remains inspectable.
+  scene.fog = null;
   addLighting(scene);
   addEnvironment(scene);
 
@@ -86,12 +88,14 @@ function createSceneRuntime(host: HTMLDivElement, mode: EventSceneMode, profile:
   frustum.visible = false;
   scene.add(frustum);
 
-  const camera = new THREE.PerspectiveCamera(mode === 'camera' ? 42 : mode === 'resident' ? 57 : 47, 1, 0.12, 600);
+  const camera = new THREE.PerspectiveCamera(mode === 'camera' ? 42 : mode === 'resident' ? 68 : 50, 1, 0.12, 600);
   camera.up.set(0, 1, 0);
 
   const dronePosition = new THREE.Vector3();
   const cameraTarget = new THREE.Vector3();
-  const residentEye = new THREE.Vector3(TARGET_BALCONY.x - 1.2, TARGET_BALCONY.y + 1.55, 2.5);
+  // The eye remains behind the railing (z=2.1) and at a natural standing eye
+  // height. The old z=2.5 position placed the observer outside the balcony.
+  const residentEye = new THREE.Vector3(TARGET_BALCONY.x - 0.65, TARGET_BALCONY.y + 1.62, 0.25);
   const externalPosition = new THREE.Vector3();
   const externalTarget = new THREE.Vector3();
 
@@ -129,12 +133,30 @@ function createSceneRuntime(host: HTMLDivElement, mode: EventSceneMode, profile:
     (balcony.targetGlow.material as THREE.MeshBasicMaterial).opacity = reveal ? 0.08 + pose.exposure * 0.2 : 0;
 
     if (mode === 'external') {
-      // A paced chase camera keeps the UAV markings legible while the fixed
-      // tower facade behind it still communicates distance and movement.
-      externalPosition.copy(dronePosition).add(new THREE.Vector3(18, 11, 25));
-      externalTarget.copy(dronePosition).add(new THREE.Vector3(0, -0.4, 0));
+      // A profile-specific establishing camera keeps both the balcony facade
+      // and UAV in frame. Partial lateral following preserves legibility while
+      // retaining the same relative geometry visible from the resident view.
+      if (profile.exposureLevel === 'low') {
+        externalPosition.set(dronePosition.x * 0.18 + 42, 51, 55);
+        externalTarget.lerpVectors(
+          new THREE.Vector3(TARGET_BALCONY.x, TARGET_BALCONY.y + 2, TARGET_BALCONY.z),
+          dronePosition,
+          0.56,
+        );
+      } else {
+        // Stay between the UAV and opposite block; placing the observer behind
+        // that block would let its wall occlude the establishing view.
+        externalPosition.set(dronePosition.x * 0.32 + 46, 60, 68);
+        externalTarget.lerpVectors(
+          new THREE.Vector3(TARGET_BALCONY.x, TARGET_BALCONY.y + 2, TARGET_BALCONY.z),
+          dronePosition,
+          0.5,
+        );
+      }
       camera.position.copy(externalPosition);
       camera.lookAt(externalTarget);
+      camera.fov = profile.exposureLevel === 'high' ? 62 : 50;
+      camera.updateProjectionMatrix();
       frustum.visible = reveal;
       placeFrustum(frustum, dronePosition.clone().add(new THREE.Vector3(0, -0.9, 0)), cameraTarget);
     } else if (mode === 'resident') {
@@ -243,6 +265,101 @@ function addEnvironment(scene: THREE.Scene) {
   road.rotation.x = -Math.PI / 2;
   road.position.set(0, 0.12, 43);
   scene.add(road);
+
+  addOppositeStreet(scene);
+}
+
+function addOppositeStreet(scene: THREE.Scene) {
+  const facadeMaterial = new THREE.MeshStandardMaterial({
+    color: 0xc7cdc8,
+    emissive: 0x303a38,
+    emissiveIntensity: 0.2,
+    roughness: 0.76,
+  });
+  const oppositeBlock = new THREE.Mesh(new THREE.BoxGeometry(158, 54, 20), facadeMaterial);
+  oppositeBlock.position.set(12, 27, 86);
+  oppositeBlock.castShadow = true;
+  oppositeBlock.receiveShadow = true;
+  scene.add(oppositeBlock);
+
+  // Shallow facade bands create depth cues at UAV-camera distance. They sit
+  // clearly in front of the wall to avoid z-fighting in the compact viewport.
+  const facadeBandMaterial = new THREE.MeshStandardMaterial({ color: 0x8f9d98, roughness: 0.82 });
+  for (let floor = 1; floor <= 11; floor += 1) {
+    const band = new THREE.Mesh(new THREE.BoxGeometry(159, 0.22, 0.5), facadeBandMaterial);
+    band.position.set(12, 5.1 + floor * 3.8, 75.55);
+    scene.add(band);
+  }
+
+  const windowMaterial = new THREE.MeshStandardMaterial({
+    color: 0x315866,
+    emissive: 0x142d35,
+    emissiveIntensity: 0.65,
+    roughness: 0.22,
+    metalness: 0.2,
+  });
+  for (let floor = 1; floor <= 11; floor += 1) {
+    const y = 6.2 + floor * 3.8;
+    for (let column = -15; column <= 15; column += 1) {
+      const window = new THREE.Mesh(new THREE.BoxGeometry(3.05, 2.15, 0.22), windowMaterial);
+      window.position.set(12 + column * 4.7, y, 75.38);
+      scene.add(window);
+    }
+  }
+
+  const awningColors = [0x1f6f72, 0xb34f42, 0xd19a3c, 0x35668a];
+  for (let shop = -5; shop <= 5; shop += 1) {
+    const storefront = new THREE.Mesh(
+      new THREE.PlaneGeometry(11.2, 4.2),
+      new THREE.MeshStandardMaterial({ color: 0x334d52, emissive: 0x1a292c, emissiveIntensity: 0.35 }),
+    );
+    storefront.position.set(12 + shop * 13.2, 3.25, 75.85);
+    scene.add(storefront);
+    const awning = new THREE.Mesh(
+      new THREE.BoxGeometry(10.6, 0.55, 1.8),
+      new THREE.MeshStandardMaterial({ color: awningColors[(shop + 8) % awningColors.length], roughness: 0.7 }),
+    );
+    awning.position.set(12 + shop * 13.2, 5.8, 74.95);
+    awning.castShadow = true;
+    scene.add(awning);
+  }
+
+  const sidewalkMaterial = new THREE.MeshStandardMaterial({ color: 0xabb1ad, roughness: 0.95 });
+  const sidewalk = new THREE.Mesh(new THREE.BoxGeometry(190, 0.5, 13), sidewalkMaterial);
+  sidewalk.position.set(8, 0.25, 64.5);
+  sidewalk.receiveShadow = true;
+  scene.add(sidewalk);
+
+  const lanePaint = new THREE.MeshStandardMaterial({ color: 0xe7dfbf, roughness: 0.82 });
+  for (let index = -8; index <= 8; index += 1) {
+    const dash = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.06, 0.42), lanePaint);
+    dash.position.set(index * 14, 0.2, 43);
+    scene.add(dash);
+  }
+
+  const poleMaterial = new THREE.MeshStandardMaterial({ color: 0x334244, roughness: 0.5, metalness: 0.58 });
+  const lampMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffe1a1,
+    emissive: 0xffc55c,
+    emissiveIntensity: 1.4,
+  });
+  for (const x of [-62, -18, 28, 72]) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 7.8, 10), poleMaterial);
+    pole.position.set(x, 3.9, 59);
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 8), lampMaterial);
+    lamp.position.set(x, 7.7, 59);
+    scene.add(pole, lamp);
+  }
+
+  const treeTrunk = new THREE.MeshStandardMaterial({ color: 0x655447, roughness: 1 });
+  const treeCrown = new THREE.MeshStandardMaterial({ color: 0x3d7154, roughness: 0.94 });
+  for (const x of [-82, -40, 6, 50, 94]) {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.48, 4.6, 8), treeTrunk);
+    trunk.position.set(x, 2.3, 67.5);
+    const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(2.7, 1), treeCrown);
+    crown.position.set(x, 6, 67.5);
+    scene.add(trunk, crown);
+  }
 }
 
 function createTargetBalcony() {
@@ -277,6 +394,7 @@ function createTargetBalcony() {
   }
 
   const resident = createResidentModel();
+  resident.group.scale.setScalar(0.62);
   resident.group.position.set(0.9, 0, 0.7);
   group.add(resident.group);
 
