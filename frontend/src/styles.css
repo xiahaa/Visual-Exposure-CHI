@@ -3425,37 +3425,16 @@ h1 {
   border-right: 1px solid #d8e2df;
 }
 
-.warmup-mesh-host,
-.warmup-mesh-canvas {
+.warmup-gs-scene {
+  position: absolute;
+  inset: 0;
+  background: #162427;
+}
+
+.warmup-gs-scene .event-scene-host,
+.warmup-gs-scene .event-scene-canvas {
   width: 100%;
   height: 100%;
-}
-
-.warmup-mesh-host {
-  position: absolute;
-  inset: 0;
-  min-height: inherit;
-  background: #9abac3;
-}
-
-.warmup-mesh-canvas {
-  display: block;
-}
-
-.mesh-loading {
-  position: absolute;
-  z-index: 2;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: #14211e;
-  color: #d8e6e1;
-  font-size: 0.74rem;
-  font-weight: 800;
-}
-
-.mesh-loading.error {
-  color: #ffb1a4;
 }
 
 .camera-view::after {
@@ -4480,6 +4459,51 @@ h1 {
 .legacy-setup-divider { position: relative; margin: 26px 0 14px; border-top: 1px solid rgba(255, 255, 255, 0.18); }
 .legacy-setup-divider span { position: relative; top: -7px; padding-right: 8px; background: #163e46; color: #86a5a4; font-size: 0.55rem; font-weight: 900; text-transform: uppercase; }
 
+/* Guided MatrixCity flight configuration for facilitator previews. */
+.flight-config-title { padding-top: 22px; border-top: 1px solid #d4dedd; }
+.flight-configurator { display: grid; gap: 14px; }
+.flight-mode-segment { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.flight-mode-segment button { display: grid; grid-template-columns: 24px 1fr; gap: 8px; align-items: center; min-height: 54px; padding: 9px 11px; border: 1px solid #c4d0d1; background: #fff; color: #405a5f; text-align: left; cursor: pointer; }
+.flight-mode-segment button.selected { border-color: #197c8d; background: #edf7f7; box-shadow: inset 3px 0 0 #197c8d; color: #174f59; }
+.flight-mode-segment button > span { display: grid; gap: 2px; }
+.flight-mode-segment button strong { font-size: 0.68rem; }
+.flight-mode-segment button small { color: #6f8285; font-size: 0.55rem; }
+.flight-control-warning { margin: 0; padding: 9px 11px; border-left: 3px solid #d9a444; background: #fff8e8; color: #6d5a31; font-size: 0.61rem; line-height: 1.5; }
+.flight-config-guide { border: 1px solid #c9d5d4; background: #f3f7f6; }
+.flight-config-guide summary { padding: 10px 12px; color: #275a63; font-size: 0.66rem; font-weight: 900; cursor: pointer; }
+.flight-config-guide ol { display: grid; gap: 6px; margin: 0; padding: 0 22px 8px 32px; color: #4d6266; font-size: 0.61rem; line-height: 1.45; }
+.flight-config-guide p { margin: 0; padding: 9px 12px; border-top: 1px solid #d5dfde; color: #6a7d80; font-size: 0.58rem; line-height: 1.45; }
+.flight-config-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.flight-config-actions button,
+.flight-config-file { display: inline-flex; gap: 6px; align-items: center; min-height: 34px; padding: 7px 9px; border: 1px solid #adbec0; background: #fff; color: #31585f; font-size: 0.6rem; font-weight: 850; cursor: pointer; }
+.flight-config-actions button:disabled { cursor: not-allowed; opacity: 0.48; }
+.flight-config-file input { display: none; }
+.flight-config-group { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid #d5dedd; }
+.flight-config-group > header { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.flight-config-group > header strong { color: #2b4f56; font-size: 0.7rem; }
+.flight-config-group > header small { color: #78898c; font-size: 0.55rem; }
+.flight-point-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.enu-point-editor { min-width: 0; margin: 0; padding: 9px; border: 1px solid #c7d3d3; background: #fff; }
+.enu-point-editor legend { padding: 0 5px; color: #315b62; font-size: 0.62rem; font-weight: 900; }
+.enu-point-editor > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.enu-point-editor label,
+.camera-number-field { display: grid; min-width: 0; gap: 4px; }
+.enu-point-editor label > span,
+.camera-number-field > span { color: #52686c; font-size: 0.56rem; font-weight: 800; }
+.enu-point-editor label > span b { display: inline-grid; width: 18px; height: 18px; margin-right: 4px; place-items: center; background: #e8f0ef; color: #176a76; font-size: 0.52rem; }
+.flight-number-input { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border: 1px solid #b8c7c8; background: #fff; }
+.flight-number-input input { width: 100%; min-width: 0; height: 34px; padding: 0 6px; border: 0; background: transparent; color: #203c41; font-size: 0.67rem; }
+.flight-number-input > span { padding-right: 6px; color: #7b8c8f; font-size: 0.52rem; }
+.enu-point-editor small,
+.camera-number-field small { color: #819093; font-size: 0.48rem; line-height: 1.35; }
+.camera-config-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.camera-number-field { padding: 8px; border: 1px solid #c7d3d3; background: #fff; }
+.flight-config-validation { padding: 9px 11px; border-left: 3px solid #2e8f76; background: #edf7f3; color: #276555; font-size: 0.61rem; font-weight: 800; }
+.flight-config-validation.error { border-left-color: #d85e4b; background: #fff1ee; color: #8a4034; }
+.setup-secondary.disabled { cursor: not-allowed; opacity: 0.5; }
+.vep-flight-status { padding: 5px 7px; border: 1px solid #4c8581; background: #193f42; color: #c4e8e4; font-size: 0.52rem; font-weight: 900; text-transform: uppercase; }
+.vep-flight-status.error { border-color: #b66b5c; background: #4d2925; color: #ffd6ce; }
+
 @media (max-width: 900px) {
   .reveal-triple-grid { grid-template-columns: 1fr 1fr; height: auto; }
   .reveal-triple-grid .event-view-panel { min-height: 290px; }
@@ -4490,6 +4514,8 @@ h1 {
   .clarity-method-strip > small { grid-column: 1 / -1; justify-self: start; }
   .fact-grid { grid-template-columns: 1fr; }
   .vep-tabs { grid-template-columns: repeat(2, 1fr); }
+  .flight-point-grid,
+  .camera-config-grid { grid-template-columns: 1fr; }
   .vep-tabs button:nth-child(3) { border-left: 0; border-top: 1px solid #bdccca; }
   .vep-tabs button:nth-child(4) { border-top: 1px solid #bdccca; }
 }
@@ -4529,7 +4555,9 @@ h1 {
   .vep-tabs { grid-template-columns: 1fr; }
   .vep-tabs button + button { border-top: 1px solid #bdccca; border-left: 0; }
   .event-profile-grid,
-  .disclosure-choice { grid-template-columns: 1fr; }
+  .disclosure-choice,
+  .flight-mode-segment { grid-template-columns: 1fr; }
+  .enu-point-editor > div { grid-template-columns: 1fr; }
   .notice-card dl div { grid-template-columns: 1fr; gap: 4px; }
 }
 

@@ -1,9 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { EventProfile } from './eventProfiles';
 import { sampleEventPose, TARGET_BALCONY } from './eventProfiles';
 import { resolveGaussianAssetSource, type GaussianTileSource } from './gaussianAssets';
+import {
+  createDefaultMatrixCityFlightConfig,
+  verticalFovDegrees,
+  type MatrixCityFlightConfig,
+} from './matrixCityFlightConfig';
 import {
   enuToScene,
   MATRIX_CITY_FACADE_CENTER,
@@ -42,11 +47,6 @@ const UAV_MODEL_SCALE = 0.25;
 const UAV_GIMBAL_OFFSET_M = 0.28;
 const RESIDENT_VERTICAL_CONTEXT_FOV_DEG = 84;
 const RESIDENT_LOOK_BELOW_UAV_M = 4;
-const EVENT_CAMERA_HFOV_DEG = MATRIX_CITY_STUDY_SCENE.camera.hfov_deg;
-const EVENT_CAMERA_IMAGE_WIDTH_PX = MATRIX_CITY_STUDY_SCENE.camera.image_width_px;
-const EVENT_CAMERA_MIN_DEPTH_M = MATRIX_CITY_STUDY_SCENE.camera.min_depth_m;
-const EVENT_CAMERA_MAX_DEPTH_M = MATRIX_CITY_STUDY_SCENE.camera.max_depth_m;
-
 const DEFAULT_INTERACTION: EventSceneInteraction = {
   enabled: false,
   followUav: true,
@@ -73,6 +73,7 @@ export function EventMediaScene({
   resetViewNonce = 0,
   gaussianAssetUrl,
   onGaussianStatusChange,
+  flightConfig,
 }: {
   mode: EventSceneMode;
   profile: EventProfile;
@@ -82,10 +83,15 @@ export function EventMediaScene({
   resetViewNonce?: number;
   gaussianAssetUrl?: string;
   onGaussianStatusChange?: (status: GaussianAssetStatus) => void;
+  flightConfig?: MatrixCityFlightConfig;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<SceneRuntime | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const resolvedFlightConfig = useMemo(
+    () => flightConfig ?? createDefaultMatrixCityFlightConfig(profile.trajectoryId),
+    [flightConfig, profile.trajectoryId],
+  );
 
   useEffect(() => {
     const host = hostRef.current;
@@ -99,6 +105,7 @@ export function EventMediaScene({
         interaction.enabled,
         gaussianAssetUrl,
         onGaussianStatusChange,
+        resolvedFlightConfig,
       );
       runtimeRef.current = runtime;
       runtime.update(time, reveal, interaction);
@@ -110,7 +117,14 @@ export function EventMediaScene({
       runtimeRef.current?.dispose();
       runtimeRef.current = null;
     };
-  }, [gaussianAssetUrl, interaction.enabled, mode, onGaussianStatusChange, profile]);
+  }, [
+    gaussianAssetUrl,
+    interaction.enabled,
+    mode,
+    onGaussianStatusChange,
+    profile,
+    resolvedFlightConfig,
+  ]);
 
   useEffect(() => {
     runtimeRef.current?.update(time, reveal, interaction);
@@ -135,6 +149,7 @@ function createSceneRuntime(
   interactive: boolean,
   gaussianAssetUrl?: string,
   onGaussianStatusChange?: (status: GaussianAssetStatus) => void,
+  flightConfig: MatrixCityFlightConfig = createDefaultMatrixCityFlightConfig(profile.trajectoryId),
 ): SceneRuntime {
   const renderer = new THREE.WebGLRenderer({
     antialias: !gaussianAssetUrl,
@@ -170,12 +185,14 @@ function createSceneRuntime(
   uav.group.visible = mode !== 'camera';
   scene.add(uav.group);
 
-  const frustum = createCameraFrustum();
+  const frustum = createCameraFrustum(flightConfig.camera);
   frustum.visible = false;
   scene.add(frustum);
 
   const camera = new THREE.PerspectiveCamera(
-    mode === 'camera' ? EVENT_CAMERA_HFOV_DEG : mode === 'resident' ? RESIDENT_VERTICAL_CONTEXT_FOV_DEG : 50,
+    mode === 'camera'
+      ? verticalFovDegrees(flightConfig.camera)
+      : mode === 'resident' ? RESIDENT_VERTICAL_CONTEXT_FOV_DEG : 50,
     1,
     0.12,
     600,
@@ -247,7 +264,7 @@ function createSceneRuntime(
     if (mode === 'external' && interactive && !interaction.followUav) {
       void gaussianResource?.loadContext();
     }
-    const pose = sampleEventPose(profile, time);
+    const pose = sampleEventPose(profile, time, flightConfig);
     dronePosition.fromArray(pose.drone);
     cameraTarget.fromArray(pose.cameraTarget);
     uav.group.position.copy(dronePosition);
@@ -322,6 +339,7 @@ function createSceneRuntime(
         dronePosition.clone().add(new THREE.Vector3(0, -UAV_GIMBAL_OFFSET_M, 0)),
         cameraTarget,
         reveal && interaction.showClarity,
+        flightConfig.camera,
       );
     } else if (mode === 'resident') {
       camera.position.copy(residentEye);
@@ -334,21 +352,33 @@ function createSceneRuntime(
       camera.fov = RESIDENT_VERTICAL_CONTEXT_FOV_DEG;
       camera.updateProjectionMatrix();
       frustum.visible = false;
-      updateClaritySurfaces(claritySurfaces, dronePosition, cameraTarget, false);
+      updateClaritySurfaces(
+        claritySurfaces,
+        dronePosition,
+        cameraTarget,
+        false,
+        flightConfig.camera,
+      );
     } else {
       camera.position.copy(dronePosition).add(new THREE.Vector3(0, -UAV_GIMBAL_OFFSET_M, 0));
       camera.lookAt(cameraTarget);
-      camera.fov = EVENT_CAMERA_HFOV_DEG;
+      camera.fov = verticalFovDegrees(flightConfig.camera);
       camera.updateProjectionMatrix();
       frustum.visible = false;
-      updateClaritySurfaces(claritySurfaces, dronePosition, cameraTarget, false);
+      updateClaritySurfaces(
+        claritySurfaces,
+        dronePosition,
+        cameraTarget,
+        false,
+        flightConfig.camera,
+      );
     }
 
     renderer.render(scene, camera);
   };
 
   const resetView = () => {
-    const pose = sampleEventPose(profile, latestTime);
+    const pose = sampleEventPose(profile, latestTime, flightConfig);
     const drone = new THREE.Vector3().fromArray(pose.drone);
     if (matrixCityMode) {
       controls.target.lerpVectors(
@@ -570,11 +600,12 @@ function updateClaritySurfaces(
   cameraOrigin: THREE.Vector3,
   cameraTarget: THREE.Vector3,
   visible: boolean,
+  cameraConfig: MatrixCityFlightConfig['camera'],
 ) {
   const opticalAxis = cameraTarget.clone().sub(cameraOrigin).normalize();
-  const halfFovCosine = Math.cos(THREE.MathUtils.degToRad(EVENT_CAMERA_HFOV_DEG / 2));
-  const focalLengthPixels = (EVENT_CAMERA_IMAGE_WIDTH_PX / 2)
-    / Math.tan(THREE.MathUtils.degToRad(EVENT_CAMERA_HFOV_DEG / 2));
+  const halfFovCosine = Math.cos(THREE.MathUtils.degToRad(cameraConfig.hfov_deg / 2));
+  const focalLengthPixels = (cameraConfig.image_width_px / 2)
+    / Math.tan(THREE.MathUtils.degToRad(cameraConfig.hfov_deg / 2));
   const lowColor = new THREE.Color(0x2eaaa0);
   const mediumColor = new THREE.Color(0xf0b449);
   const highColor = new THREE.Color(0xf06452);
@@ -588,7 +619,8 @@ function updateClaritySurfaces(
     const distance = toSurface.length();
     const rayDirection = toSurface.normalize();
     const axisAlignment = opticalAxis.dot(rayDirection);
-    const inDepthRange = distance >= EVENT_CAMERA_MIN_DEPTH_M && distance <= EVENT_CAMERA_MAX_DEPTH_M;
+    const inDepthRange = distance >= cameraConfig.min_depth_m
+      && distance <= cameraConfig.max_depth_m;
     const inView = inDepthRange && axisAlignment >= halfFovCosine;
     const incidence = Math.max(0, -surface.normal.dot(rayDirection));
     const pixelsPerMeter = focalLengthPixels / Math.max(distance, 0.001);
@@ -1031,11 +1063,11 @@ function createUavModel(appearance: EventProfile['uavAppearance']) {
   return { group, rotors, gimbal, policeLights };
 }
 
-function createCameraFrustum() {
+function createCameraFrustum(cameraConfig: MatrixCityFlightConfig['camera']) {
   const group = new THREE.Group();
-  const depth = EVENT_CAMERA_MAX_DEPTH_M;
-  const halfWidth = Math.tan(THREE.MathUtils.degToRad(EVENT_CAMERA_HFOV_DEG / 2)) * depth;
-  const halfHeight = halfWidth / (16 / 9);
+  const depth = cameraConfig.max_depth_m;
+  const halfWidth = Math.tan(THREE.MathUtils.degToRad(cameraConfig.hfov_deg / 2)) * depth;
+  const halfHeight = halfWidth / (cameraConfig.image_width_px / cameraConfig.image_height_px);
   const corners = [
     new THREE.Vector3(-halfWidth, halfHeight, depth),
     new THREE.Vector3(halfWidth, halfHeight, depth),

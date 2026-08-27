@@ -34,6 +34,11 @@ import {
   type EventProfile,
 } from './eventProfiles';
 import {
+  createDefaultMatrixCityFlightConfig,
+  decodeMatrixCityFlightConfig,
+  type MatrixCityFlightConfig,
+} from './matrixCityFlightConfig';
+import {
   appendStudyEvents,
   completeStudy,
   confirmStudyStart,
@@ -71,6 +76,24 @@ export function EventStudyRunner() {
     : text(language, 'Anonymous', '匿名参与者');
   const sessionId = assignment?.session_id
     ?? (facilitatorMode ? params.get('session_id') || 'preview-session' : 'Assigning...');
+  const flightConfiguration = useMemo(() => {
+    const fallback = createDefaultMatrixCityFlightConfig(profile.trajectoryId);
+    const encoded = facilitatorMode ? params.get('flight') : null;
+    if (!encoded) return { config: fallback, custom: false, error: null as string | null };
+    try {
+      return {
+        config: decodeMatrixCityFlightConfig(encoded),
+        custom: true,
+        error: null as string | null,
+      };
+    } catch (reason) {
+      return {
+        config: fallback,
+        custom: false,
+        error: reason instanceof Error ? reason.message : 'Invalid flight configuration',
+      };
+    }
+  }, [facilitatorMode, params, profile.trajectoryId]);
   const [phase, setPhase] = useState<RunnerPhase>(previewDisclosure ? 'disclosure' : 'ready');
   const [countdown, setCountdown] = useState(3);
   const [time, setTime] = useState(previewDisclosure ? EVENT_DURATION_SECONDS / 2 : 0);
@@ -86,7 +109,10 @@ export function EventStudyRunner() {
   const studyTokenRef = useRef<string | null>(null);
   const eventSequenceRef = useRef(Math.floor(Date.now() / 10));
 
-  const pose = useMemo(() => sampleEventPose(profile, time), [profile, time]);
+  const pose = useMemo(
+    () => sampleEventPose(profile, time, flightConfiguration.config),
+    [flightConfiguration.config, profile, time],
+  );
   const facts = useMemo(() => buildDisclosureFacts(profile, language), [language, profile]);
   const vepInteraction = useMemo<EventSceneInteraction>(() => ({
     enabled: true,
@@ -339,8 +365,8 @@ export function EventStudyRunner() {
             </button>
           </div>
           <div className="initial-dual-grid">
-            <ScenePanel index="01" mode="external" profile={profile} time={time} reveal={false} language={language} gaussianAssetUrl={gaussianAssetUrl} />
-            <ScenePanel index="02" mode="resident" profile={profile} time={time} reveal={false} language={language} gaussianAssetUrl={gaussianAssetUrl} />
+            <ScenePanel index="01" mode="external" profile={profile} time={time} reveal={false} language={language} gaussianAssetUrl={gaussianAssetUrl} flightConfig={flightConfiguration.config} />
+            <ScenePanel index="02" mode="resident" profile={profile} time={time} reveal={false} language={language} gaussianAssetUrl={gaussianAssetUrl} flightConfig={flightConfiguration.config} />
           </div>
           <div className="locked-progress" aria-label={text(language, 'Playback progress', '播放进度')}>
             <i style={{ width: `${(time / EVENT_DURATION_SECONDS) * 100}%` }} />
@@ -386,6 +412,9 @@ export function EventStudyRunner() {
               resetViewNonce={vepResetViewNonce}
               gaussianAssetUrl={gaussianAssetUrl}
               gaussianStatus={gaussianStatus}
+              flightConfig={flightConfiguration.config}
+              customFlightConfig={flightConfiguration.custom}
+              flightConfigError={flightConfiguration.error}
               onGaussianStatusChange={setGaussianStatus}
               onFollowChange={(followUav) => {
                 setVepFollowUav(followUav);
@@ -410,9 +439,9 @@ export function EventStudyRunner() {
             />
           ) : (
             <div className="reveal-triple-grid standard-disclosure-grid">
-              <ScenePanel index="01" mode="external" profile={profile} time={time} reveal={false} language={language} compact gaussianAssetUrl={gaussianAssetUrl} />
-              <ScenePanel index="02" mode="resident" profile={profile} time={time} reveal={false} language={language} compact gaussianAssetUrl={gaussianAssetUrl} />
-              <ScenePanel index="03" mode="camera" profile={profile} time={time} reveal={false} language={language} compact gaussianAssetUrl={gaussianAssetUrl} />
+              <ScenePanel index="01" mode="external" profile={profile} time={time} reveal={false} language={language} compact gaussianAssetUrl={gaussianAssetUrl} flightConfig={flightConfiguration.config} />
+              <ScenePanel index="02" mode="resident" profile={profile} time={time} reveal={false} language={language} compact gaussianAssetUrl={gaussianAssetUrl} flightConfig={flightConfiguration.config} />
+              <ScenePanel index="03" mode="camera" profile={profile} time={time} reveal={false} language={language} compact gaussianAssetUrl={gaussianAssetUrl} flightConfig={flightConfiguration.config} />
             </div>
           )}
           <RevealTimeline
@@ -497,6 +526,9 @@ function VepEvidenceStage({
   resetViewNonce,
   gaussianAssetUrl,
   gaussianStatus,
+  flightConfig,
+  customFlightConfig,
+  flightConfigError,
   onGaussianStatusChange,
   onFollowChange,
   onFrustumChange,
@@ -510,6 +542,9 @@ function VepEvidenceStage({
   resetViewNonce: number;
   gaussianAssetUrl?: string;
   gaussianStatus: GaussianAssetStatus;
+  flightConfig: MatrixCityFlightConfig;
+  customFlightConfig: boolean;
+  flightConfigError: string | null;
   onGaussianStatusChange: (status: GaussianAssetStatus) => void;
   onFollowChange: (follow: boolean) => void;
   onFrustumChange: (visible: boolean) => void;
@@ -577,6 +612,16 @@ function VepEvidenceStage({
         <span className={`vep-asset-status ${gaussianStatus}`}>
           <i />{text(language, assetLabels[gaussianStatus][0], assetLabels[gaussianStatus][1])}
         </span>
+        {(customFlightConfig || flightConfigError) && (
+          <span
+            className={`vep-flight-status ${flightConfigError ? 'error' : 'custom'}`}
+            title={flightConfigError ?? text(language, 'Validated facilitator flight configuration', '已验证的主持人飞行配置')}
+          >
+            {flightConfigError
+              ? text(language, 'Default flight restored', '已恢复默认飞行配置')
+              : text(language, 'Custom flight', '自定义飞行配置')}
+          </span>
+        )}
       </div>
 
       <div className="vep-scene-grid">
@@ -592,6 +637,7 @@ function VepEvidenceStage({
           resetViewNonce={resetViewNonce}
           gaussianAssetUrl={gaussianAssetUrl}
           onGaussianStatusChange={onGaussianStatusChange}
+          flightConfig={flightConfig}
         />
         <ScenePanel
           index="02"
@@ -602,6 +648,7 @@ function VepEvidenceStage({
           language={language}
           compact
           gaussianAssetUrl={gaussianAssetUrl}
+          flightConfig={flightConfig}
         />
       </div>
 
@@ -637,6 +684,7 @@ function ScenePanel({
   resetViewNonce,
   gaussianAssetUrl,
   onGaussianStatusChange,
+  flightConfig,
 }: {
   index: string;
   mode: EventSceneMode;
@@ -649,6 +697,7 @@ function ScenePanel({
   resetViewNonce?: number;
   gaussianAssetUrl?: string;
   onGaussianStatusChange?: (status: GaussianAssetStatus) => void;
+  flightConfig: MatrixCityFlightConfig;
 }) {
   const labels: Record<EventSceneMode, [string, string]> = {
     external: [text(language, 'External flight context', '外部飞行情境'), text(language, 'Route, distance and UAV appearance', '航线、距离与无人机外观')],
@@ -666,6 +715,7 @@ function ScenePanel({
         resetViewNonce={resetViewNonce}
         gaussianAssetUrl={gaussianAssetUrl}
         onGaussianStatusChange={onGaussianStatusChange}
+        flightConfig={flightConfig}
       />
       <div className="event-view-label"><span>{index}</span><div><strong>{labels[mode][0]}</strong><small>{labels[mode][1]}</small></div></div>
       {mode === 'camera' && <div className="camera-crosshair"><i /><b /></div>}

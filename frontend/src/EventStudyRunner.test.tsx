@@ -2,10 +2,14 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventStudyRunner } from './EventStudyRunner';
+import {
+  createDefaultMatrixCityFlightConfig,
+  encodeMatrixCityFlightConfig,
+} from './matrixCityFlightConfig';
 
 vi.mock('./EventMediaScene', () => ({
-  EventMediaScene: ({ mode, profile, reveal }: { mode: string; profile: { id: string }; reveal: boolean }) => (
-    <div data-testid={`scene-${mode}`} data-profile={profile.id} data-reveal={String(reveal)} />
+  EventMediaScene: ({ mode, profile, reveal, flightConfig }: { mode: string; profile: { id: string }; reveal: boolean; flightConfig: { trajectory: { start_enu_m: [number, number, number] } } }) => (
+    <div data-testid={`scene-${mode}`} data-profile={profile.id} data-reveal={String(reveal)} data-start-east={flightConfig.trajectory.start_enu_m[0]} />
   ),
 }));
 
@@ -92,6 +96,19 @@ describe('EventStudyRunner', () => {
     expect(screen.getByLabelText('相机视锥')).not.toBeChecked();
     expect(screen.getByLabelText('物理清晰度')).not.toBeChecked();
     expect(screen.getByText('交互式 VEP')).toBeInTheDocument();
+  });
+
+  it('applies a validated custom flight only in facilitator preview mode', () => {
+    const config = createDefaultMatrixCityFlightConfig('fast_tracking');
+    config.trajectory.start_enu_m[0] = 88;
+    const encoded = encodeURIComponent(encodeMatrixCityFlightConfig(config));
+    window.history.pushState({}, '', `/runner?role=facilitator&profile=C&disclosure=V&lang=en&preview=disclosure&flight=${encoded}`);
+
+    render(<EventStudyRunner />);
+
+    expect(screen.getByText('Custom flight')).toBeInTheDocument();
+    expect(screen.getByTestId('scene-external')).toHaveAttribute('data-start-east', '88');
+    expect(screen.getByTestId('scene-camera')).toHaveAttribute('data-start-east', '88');
   });
 
   it('uses the server-assigned cell and issues a questionnaire completion code', async () => {

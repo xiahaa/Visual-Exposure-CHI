@@ -86,6 +86,8 @@ study traffic. Use PostgreSQL before running multiple backend replicas.
 See `docs/HF_SPACES_DEPLOYMENT.md` for the full checklist.
 See `docs/MATRIXCITY_3DGS.md` for the local subset export and browser-loading
 workflow.
+See `docs/MATRIXCITY_FLIGHT_CONFIGURATION.md` for facilitator trajectory and
+camera configuration ranges, JSON import/export, and pilot validation guidance.
 
 ## Core Principle
 

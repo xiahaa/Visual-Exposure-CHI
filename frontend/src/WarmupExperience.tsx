@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildStudyUrl, readStudySession } from './studySession';
 import type { StudyLanguage } from './types';
-import { WarmupMeshScene } from './WarmupMeshScene';
+import { EventMediaScene } from './EventMediaScene';
+import { EVENT_PROFILES, type EventProfile } from './eventProfiles';
+import { createDefaultMatrixCityFlightConfig } from './matrixCityFlightConfig';
 import { WARMUP_RESULT_STORAGE_KEY } from './warmupStorage';
 
 export { WARMUP_RESULT_STORAGE_KEY } from './warmupStorage';
@@ -20,6 +22,16 @@ type TimelineSample = {
 
 const DURATION_SECONDS = 36;
 const TICK_MS = 50;
+const WARMUP_EVENT_PROFILE: EventProfile = {
+  ...EVENT_PROFILES.C,
+  durationSeconds: DURATION_SECONDS,
+  title: { en: 'Camera sweep calibration', zh: '相机扫视校准' },
+  description: {
+    en: 'A UAV passes through MatrixCity while its camera pans toward the target facade.',
+    zh: '无人机飞越 MatrixCity，相机逐步转向目标立面。',
+  },
+};
+const WARMUP_FLIGHT_CONFIG = createDefaultMatrixCityFlightConfig('warmup_calibration');
 
 export function WarmupExperience() {
   const session = useMemo(() => readStudySession(), []);
@@ -31,6 +43,11 @@ export function WarmupExperience() {
   const [confidence, setConfidence] = useState(3);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const audioRef = useRef<DroneAudio | null>(null);
+  const gaussianAssetUrl = useMemo(() => {
+    const configured = import.meta.env.VITE_MATRIXCITY_GS_MANIFEST_URL
+      || import.meta.env.VITE_MATRIXCITY_GS_URL;
+    return typeof configured === 'string' && configured.trim() ? configured.trim() : undefined;
+  }, []);
 
   const sample = useMemo(() => sampleTimeline(time), [time]);
   const predictionError = Math.abs(prediction - EXPOSURE_PEAK_TIME);
@@ -122,8 +139,8 @@ export function WarmupExperience() {
           <p className="warmup-lead">
             {copy(
               language,
-              "First, watch and listen from a resident's viewpoint. Estimate when visual exposure is highest before seeing the simulated camera view.",
-              '请先从居民视角观察和聆听，并在看到模拟相机画面之前，判断视觉暴露最高的时刻。',
+              'First, watch and listen to the flight context. Estimate when visual exposure is highest before seeing the simulated camera view.',
+              '请先观察和聆听飞行情境，并在看到模拟相机画面之前，判断视觉暴露最高的时刻。',
             )}
           </p>
           <div className="warmup-consent-row">
@@ -139,8 +156,8 @@ export function WarmupExperience() {
           <p className="warmup-disclaimer">
             {copy(
               language,
-              'The live views are rendered from Hong Kong OSM building meshes. No real residents or private imagery are shown.',
-              '实时画面由香港 OSM 建筑网格渲染，不包含真实居民或私人影像。',
+              'The synthetic views use a MatrixCity 3D Gaussian Splatting scene. No real residents or private imagery are shown.',
+              '合成画面使用 MatrixCity 三维高斯泼溅场景，不包含真实居民或私人影像。',
             )}
           </p>
         </div>
@@ -205,7 +222,7 @@ export function WarmupExperience() {
       <header className="warmup-player-header">
         <div>
           <p className="warmup-kicker">
-            {revealVisible ? copy(language, 'Synchronized reveal', '同步揭示') : copy(language, 'Resident viewpoint', '居民视角')}
+            {revealVisible ? copy(language, 'Synchronized reveal', '同步揭示') : copy(language, 'Flight context', '飞行情境')}
           </p>
           <h1>
             {revealVisible
@@ -220,8 +237,8 @@ export function WarmupExperience() {
       </header>
 
       <section className={revealVisible ? 'warmup-views reveal' : 'warmup-views'}>
-        <ObserverView sample={sample} reveal={revealVisible} language={language} />
-        {revealVisible && <CameraView sample={sample} language={language} />}
+        <FlightContextView sample={sample} reveal={revealVisible} language={language} gaussianAssetUrl={gaussianAssetUrl} />
+        {revealVisible && <CameraView sample={sample} language={language} gaussianAssetUrl={gaussianAssetUrl} />}
       </section>
 
       <section className="warmup-console">
@@ -293,14 +310,33 @@ export function WarmupExperience() {
   );
 }
 
-function ObserverView({ sample, reveal, language }: { sample: TimelineSample; reveal: boolean; language: StudyLanguage }) {
+function FlightContextView({
+  sample,
+  reveal,
+  language,
+  gaussianAssetUrl,
+}: {
+  sample: TimelineSample;
+  reveal: boolean;
+  language: StudyLanguage;
+  gaussianAssetUrl?: string;
+}) {
   return (
-    <article className="observer-view" aria-label={copy(language, 'Resident viewpoint', '居民视角')}>
-      <WarmupMeshScene mode="observer" time={sample.time} exposure={sample.exposure} reveal={reveal} />
+    <article className="observer-view" aria-label={copy(language, 'External flight context', '飞行外部情境')}>
+      <div className="warmup-gs-scene">
+        <EventMediaScene
+          mode="external"
+          profile={WARMUP_EVENT_PROFILE}
+          time={sample.time}
+          reveal={reveal}
+          gaussianAssetUrl={gaussianAssetUrl}
+          flightConfig={WARMUP_FLIGHT_CONFIG}
+        />
+      </div>
       <div className="view-label">
         <span>01</span>
-        <strong>{copy(language, 'Resident viewpoint', '居民视角')}</strong>
-        <small>{copy(language, 'Geospatial city mesh', '地理空间城市网格')}</small>
+        <strong>{copy(language, 'External flight context', '飞行外部情境')}</strong>
+        <small>{copy(language, 'Runner-matched aerial oblique view', '与 Runner 一致的高空斜视视角')}</small>
       </div>
       <div className="observer-readout">
         <MetricBar label={copy(language, 'Sound', '声音')} value={sample.audibility} color="#f0b44d" />
@@ -310,15 +346,32 @@ function ObserverView({ sample, reveal, language }: { sample: TimelineSample; re
   );
 }
 
-function CameraView({ sample, language }: { sample: TimelineSample; language: StudyLanguage }) {
+function CameraView({
+  sample,
+  language,
+  gaussianAssetUrl,
+}: {
+  sample: TimelineSample;
+  language: StudyLanguage;
+  gaussianAssetUrl?: string;
+}) {
   const targetVisible = sample.exposure > 0.2;
   return (
     <article className="camera-view" aria-label={copy(language, 'Simulated UAV camera view', '模拟无人机相机视角')}>
-      <WarmupMeshScene mode="camera" time={sample.time} exposure={sample.exposure} reveal />
+      <div className="warmup-gs-scene">
+        <EventMediaScene
+          mode="camera"
+          profile={WARMUP_EVENT_PROFILE}
+          time={sample.time}
+          reveal
+          gaussianAssetUrl={gaussianAssetUrl}
+          flightConfig={WARMUP_FLIGHT_CONFIG}
+        />
+      </div>
       <div className="view-label dark">
         <span>02</span>
         <strong>{copy(language, 'Live UAV camera render', '实时无人机相机渲染')}</strong>
-        <small>{copy(language, 'Pose-synchronized mesh camera', '姿态同步网格相机')}</small>
+        <small>{copy(language, 'Pose-synchronized 3DGS camera', '姿态同步 3DGS 相机')}</small>
       </div>
       <div className="camera-reticle"><span /><i /></div>
       {targetVisible && (

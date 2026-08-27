@@ -1,35 +1,54 @@
 # Warm-Up Rendering
 
-The `/warmup` experience uses a synchronized geometry-based renderer rather
-than cropping a prerecorded image.
+The `/warmup` experience uses the same MatrixCity 3D Gaussian Splatting
+appearance layer as the main event-study disclosure. It no longer uses the
+separate Hong Kong OSM procedural renderer.
 
-## Current Mesh Renderer
+## Current MatrixCity 3DGS renderer
 
-- Loads 1,405 real Hong Kong OSM building footprints from the Mong Kok scenario.
-- Selects nearby buildings and extrudes them using the scenario height estimates.
-- Uses one deterministic trajectory to drive the UAV model and camera pose.
-- Renders a resident camera and UAV camera against the same geometry.
-- Builds the visible camera frustum from the gimbal mount using the configured
-  horizontal FOV, 16:9 sensor aspect, and maximum visual depth.
-- Uses the same camera target, FOV, depth, and mesh occlusion for the resident
-  frustum overlay and UAV live view.
-- Adds deterministic facade variation, windows, rooftop equipment, streets,
-  trees, daylight, shadows, and atmospheric perspective for legibility.
-- Adds procedural facade windows only as an appearance cue. They are not treated
-  as detected real windows or used by the exposure engine.
+- Loads the browser-ready MatrixCity tile manifest configured by
+  `VITE_MATRIXCITY_GS_MANIFEST_URL`.
+- Uses the same Spark/Three.js renderer, coordinate transform, UAV model, and
+  camera implementation as the main event-study scene.
+- Uses a dedicated, locked `warmup_calibration` trajectory from
+  `frontend/src/matrixCityStudyScene.json`.
+- Renders the runner-matched aerial-oblique context view and UAV-camera view
+  from the same time-indexed UAV pose and camera look-at target.
+- Pans the camera from an offset direction toward and then across the target
+  facade so camera orientation remains meaningful during calibration.
+- Keeps all UAV poses within the validated MatrixCity GS aerial envelope.
 
-The warm-up exposure curve remains a controlled study stimulus. It is designed
-to demonstrate that audible proximity and visual exposure can peak at different
-times; it is not presented as observed real-world footage.
+The warm-up does not expose facilitator controls. Participants cannot change
+the trajectory, camera, language, or study condition.
 
-This is an L2 geometry-consistent mesh stimulus, not a photorealistic digital
-twin. Its purpose is to keep route, camera pose, occlusion, and study timing
-auditable while avoiding the use of private real-world imagery.
+## Controlled stimulus
 
-## Future 3DGS Renderer
+The 36-second audibility and exposure curves remain controlled study stimuli.
+The exposure curve peaks at 25.5 seconds and is synchronized with the camera
+sweep, but it is not recomputed from Gaussian opacity and is not an observed
+real-world measurement.
 
-A city-scale Gaussian Splatting asset can later replace the mesh appearance
-layer while preserving the same trajectory and camera timeline. Final exposure
-metrics should continue to be evaluated by Open3D or another explicit geometry
-engine, because a splat renderer alone does not provide the same auditable
-first-hit surface mapping.
+The high aerial-oblique context camera deliberately matches the runner view and
+stays close to MatrixCity's training-view distribution. It avoids the blurred,
+low-altitude resident camera that is unsuitable for this GS asset.
+
+The purpose of the warm-up is to teach one distinction before the main task:
+audible proximity does not by itself determine what a camera can capture.
+Camera orientation, distance, occlusion, and image detail also matter.
+
+MatrixCity is synthetic public research data. No real residents or private
+imagery are used. Open3D remains the authoritative evaluator for the main
+visual-exposure engine because the GS renderer does not provide auditable
+semantic first-hit surface mapping on its own.
+
+## Deployment
+
+The warm-up reads the same asset environment variable as the event runner:
+
+```text
+VITE_MATRIXCITY_GS_MANIFEST_URL=https://<asset-host>/vep/matrixcity/v2/matrixcity-neighborhood-study-v2.json
+```
+
+The primary tile loads for each view. Browser caching prevents duplicate network
+transfer of the same immutable SPZ object, although each WebGL view maintains
+its own GPU representation.

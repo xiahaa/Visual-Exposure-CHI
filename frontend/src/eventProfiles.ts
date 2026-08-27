@@ -1,8 +1,11 @@
 import {
   enuToScene,
   MATRIX_CITY_RESIDENT_FEET,
-  MATRIX_CITY_STUDY_SCENE,
 } from './matrixCityScene';
+import {
+  createDefaultMatrixCityFlightConfig,
+  type MatrixCityFlightConfig,
+} from './matrixCityFlightConfig';
 
 export type EventProfileId = 'A' | 'B' | 'C' | 'D';
 export type DisclosureCondition = 'M' | 'S' | 'V';
@@ -114,9 +117,14 @@ export function readDisclosureCondition(value: string | null): DisclosureConditi
  * the same trajectory ID, so appearance and data-practice manipulations cannot
  * accidentally change flight geometry.
  */
-export function sampleEventPose(profile: EventProfile, time: number): EventPose {
+export function sampleEventPose(
+  profile: EventProfile,
+  time: number,
+  flightConfig?: MatrixCityFlightConfig,
+): EventPose {
   const progress = clamp(time / profile.durationSeconds);
-  const trajectory = MATRIX_CITY_STUDY_SCENE.trajectories[profile.trajectoryId];
+  const trajectory = flightConfig?.trajectory
+    ?? createDefaultMatrixCityFlightConfig(profile.trajectoryId).trajectory;
   const start = enuToScene(trajectory.start_enu_m);
   const end = enuToScene(trajectory.end_enu_m);
   const targetStart = enuToScene(trajectory.camera_target_start_enu_m);
