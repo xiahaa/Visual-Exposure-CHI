@@ -122,3 +122,7 @@ sharpening. A study that requires inspectable resident-level imagery should use
 an oblique/street-level Gaussian capture around the target, or restrict the live
 MatrixCity camera to a validated aerial pose envelope and use a separate local
 facade asset for the resident view.
+
+Facilitator preview trajectories and camera settings can be configured through
+`/setup`. See `docs/MATRIXCITY_FLIGHT_CONFIGURATION.md` for coordinate semantics,
+hard limits, recommended ranges, JSON import/export, and pilot checks.

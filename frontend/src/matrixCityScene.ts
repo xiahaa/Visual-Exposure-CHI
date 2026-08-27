@@ -22,10 +22,11 @@ type MatrixCityStudyScene = {
   camera: {
     hfov_deg: number;
     image_width_px: number;
+    image_height_px: number;
     min_depth_m: number;
     max_depth_m: number;
   };
-  trajectories: Record<'slow_offset' | 'fast_tracking', {
+  trajectories: Record<'slow_offset' | 'fast_tracking' | 'warmup_calibration', {
     start_enu_m: EnuPoint;
     end_enu_m: EnuPoint;
     camera_target_start_enu_m: EnuPoint;

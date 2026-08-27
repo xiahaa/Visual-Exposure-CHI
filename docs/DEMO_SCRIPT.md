@@ -12,7 +12,7 @@ Enter participant ID, session ID, condition, language, and camera profile. Open
 or copy the generated `/warmup` link. The generated URL keeps all session
 parameters when the participant continues into the study.
 
-1. Start with the resident viewpoint rendered from the Hong Kong OSM mesh and optional synthesized drone sound.
+1. Start with the runner-matched aerial-oblique context view rendered from the MatrixCity 3DGS scene and optional synthesized drone sound.
 2. Ask the participant to estimate when visual exposure is highest and report confidence.
 3. Reveal the synchronized resident and live UAV mesh-camera views.
 4. Point out that the sound peak and estimated visual exposure peak occur at different times.

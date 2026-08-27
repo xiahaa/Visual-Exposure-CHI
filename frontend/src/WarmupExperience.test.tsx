@@ -1,7 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WarmupExperience, WARMUP_RESULT_STORAGE_KEY } from './WarmupExperience';
+
+vi.mock('./EventMediaScene', () => ({
+  EventMediaScene: ({ mode, flightConfig }: { mode: string; flightConfig: { trajectory: { start_enu_m: [number, number, number] } } }) => (
+    <div data-testid={`warmup-gs-${mode}`} data-start-east={flightConfig.trajectory.start_enu_m[0]} />
+  ),
+}));
 
 describe('WarmupExperience', () => {
   beforeEach(() => {
@@ -18,6 +24,8 @@ describe('WarmupExperience', () => {
     await user.click(screen.getByRole('button', { name: /Begin experience/ }));
 
     expect(screen.getByText('Listen first. Where do you think exposure peaks?')).toBeInTheDocument();
+    expect(screen.getByTestId('warmup-gs-external')).toHaveAttribute('data-start-east', '70');
+    expect(screen.getByText('Runner-matched aerial oblique view')).toBeInTheDocument();
   });
 
   it('stores the calibration response when the reveal begins', async () => {
@@ -39,6 +47,7 @@ describe('WarmupExperience', () => {
     expect(stored.session_id).toBe('warmup-test');
     expect(stored.language).toBe('en');
     expect(screen.getByText('What you hear is not the same as what the camera sees.')).toBeInTheDocument();
+    expect(screen.getByTestId('warmup-gs-camera')).toBeInTheDocument();
   });
 
   it('shows only the facilitator-selected session language', async () => {
