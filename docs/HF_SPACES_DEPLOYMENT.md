@@ -43,12 +43,23 @@ Then verify a scenario:
 https://<user-or-org>-<space-name>.hf.space/api/scenarios/hong_kong_mong_kok_01
 ```
 
+Verify the browser-ready MatrixCity asset without downloading it:
+
+```text
+HEAD https://<user-or-org>-<space-name>.hf.space/gs-assets/matrixcity-tile19-study-v1.spz
+```
+
+The Space deployment repository stores this file under `assets/` using Git
+LFS. `FileResponse` streams it without loading the complete file into Python
+memory and marks the versioned URL as immutable for browser caching.
+
 ## 3. Connect Vercel Frontend To The Space
 
 In the Vercel project settings, set:
 
 ```text
 VITE_API_BASE_URL=https://<user-or-org>-<space-name>.hf.space
+VITE_MATRIXCITY_GS_URL=https://<user-or-org>-<space-name>.hf.space/gs-assets/matrixcity-tile19-study-v1.spz
 ```
 
 Then redeploy the Vercel frontend.
@@ -85,3 +96,7 @@ CORS_ALLOW_ORIGIN_REGEX=https://(.*\.vercel\.app|visual-exposure\.example\.org)
   `libgomp1` for OpenMP support.
 - The backend keeps the same API paths, including `/api/exposure/compute` and
   `/api/planning/optimize`.
+- Serving the 25.9 MB SPZ from the Space is suitable for deployment validation
+  and a small pilot. For a larger or mainland-China study, move the same
+  immutable file to OSS/COS plus a CDN and change only
+  `VITE_MATRIXCITY_GS_URL`; no frontend code change is required.

@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY backend /app/backend
 COPY data /app/data
+COPY assets /app/assets
 
 WORKDIR /app/backend
 
