@@ -4244,9 +4244,12 @@ h1 {
   white-space: nowrap;
 }
 .vep-asset-status i { width: 6px; height: 6px; border-radius: 50%; background: #718585; }
-.vep-asset-status.loading i { background: #e6af50; box-shadow: 0 0 0 3px rgba(230, 175, 80, 0.13); }
+.vep-asset-status.loading i,
+.vep-asset-status.streaming i { background: #e6af50; box-shadow: 0 0 0 3px rgba(230, 175, 80, 0.13); }
 .vep-asset-status.ready { color: #9fd8cd; }
 .vep-asset-status.ready i { background: #4bb7a8; box-shadow: 0 0 0 3px rgba(75, 183, 168, 0.13); }
+.vep-asset-status.partial { color: #efcb83; }
+.vep-asset-status.partial i { background: #d99d3e; box-shadow: 0 0 0 3px rgba(217, 157, 62, 0.13); }
 .vep-asset-status.error i { background: #db775f; }
 
 .vep-scene-grid {

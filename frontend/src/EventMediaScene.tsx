@@ -3,7 +3,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { EventProfile } from './eventProfiles';
 import { sampleEventPose, TARGET_BALCONY } from './eventProfiles';
+import { resolveGaussianAssetSource, type GaussianTileSource } from './gaussianAssets';
 import {
+  enuToScene,
   MATRIX_CITY_FACADE_CENTER,
   MATRIX_CITY_FACADE_NORMAL,
   MATRIX_CITY_RESIDENT_FEET,
@@ -25,7 +27,13 @@ export type EventSceneInteraction = {
   showClarity: boolean;
 };
 
-export type GaussianAssetStatus = 'procedural' | 'loading' | 'ready' | 'error';
+export type GaussianAssetStatus =
+  | 'procedural'
+  | 'loading'
+  | 'streaming'
+  | 'ready'
+  | 'partial'
+  | 'error';
 
 // The procedural source mesh spans roughly 12.2 scene meters from blade tip
 // to blade tip. A 0.25 scale produces a 3.05 m professional quadcopter, large
@@ -49,6 +57,11 @@ const DEFAULT_INTERACTION: EventSceneInteraction = {
 type ClaritySurface = {
   mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   normal: THREE.Vector3;
+};
+
+type GaussianEnvironmentResource = {
+  loadContext: () => Promise<void>;
+  dispose: () => void;
 };
 
 export function EventMediaScene({
@@ -192,21 +205,25 @@ function createSceneRuntime(
   let latestReveal = false;
   let latestInteraction = DEFAULT_INTERACTION;
   let disposed = false;
-  let sparkResource: { dispose?: () => void } | null = null;
-  let splatResource: { dispose?: () => void } | null = null;
+  let gaussianResource: GaussianEnvironmentResource | null = null;
 
   if (gaussianAssetUrl) {
     onGaussianStatusChange?.('loading');
-    void loadGaussianEnvironment(scene, renderer, gaussianAssetUrl)
-      .then(({ spark, splat }) => {
+    void loadGaussianEnvironment(
+      scene,
+      renderer,
+      gaussianAssetUrl,
+      onGaussianStatusChange,
+    )
+      .then((resource) => {
         if (disposed) {
-          splat.dispose?.();
-          spark.dispose?.();
+          resource.dispose();
           return;
         }
-        sparkResource = spark;
-        splatResource = splat;
-        onGaussianStatusChange?.('ready');
+        gaussianResource = resource;
+        if (mode === 'external' && interactive && !latestInteraction.followUav) {
+          void gaussianResource.loadContext();
+        }
       })
       .catch(() => {
         if (!disposed) onGaussianStatusChange?.('error');
@@ -227,6 +244,9 @@ function createSceneRuntime(
     latestTime = time;
     latestReveal = reveal;
     latestInteraction = interaction;
+    if (mode === 'external' && interactive && !interaction.followUav) {
+      void gaussianResource?.loadContext();
+    }
     const pose = sampleEventPose(profile, time);
     dronePosition.fromArray(pose.drone);
     cameraTarget.fromArray(pose.cameraTarget);
@@ -376,8 +396,7 @@ function createSceneRuntime(
       observer.disconnect();
       renderer.setAnimationLoop(null);
       controls.dispose();
-      splatResource?.dispose?.();
-      sparkResource?.dispose?.();
+      gaussianResource?.dispose();
       scene.traverse((object) => {
         if (object instanceof THREE.Mesh || object instanceof THREE.LineSegments) {
           object.geometry.dispose();
@@ -599,26 +618,95 @@ async function loadGaussianEnvironment(
   scene: THREE.Scene,
   renderer: THREE.WebGLRenderer,
   url: string,
-) {
+  onStatus?: (status: GaussianAssetStatus) => void,
+): Promise<GaussianEnvironmentResource> {
   const { SparkRenderer, SplatMesh } = await import('@sparkjsdev/spark');
+  const source = await resolveGaussianAssetSource(url);
   const spark = new SparkRenderer({ renderer });
   scene.add(spark);
-  // This study asset is already a spatially bounded subset. Building Spark's
-  // Tiny LoD merges nearby Gaussians and noticeably softens facade evidence,
-  // while the full subset is still comfortably below the desktop splat budget.
-  const splat = new SplatMesh({ url });
-  splat.rotation.x = -Math.PI / 2;
-  splat.scale.setScalar(readEnvironmentNumber('VITE_MATRIXCITY_GS_SCALE', 1));
-  splat.position.set(
+  const loadedSplats: Array<{ dispose?: () => void }> = [];
+  const primary = source.tiles.find((tile) => tile.role === 'primary');
+  if (!primary) throw new Error('Gaussian asset source has no primary tile');
+  const context = source.tiles.filter((tile) => tile.role === 'context');
+  const scale = readEnvironmentNumber('VITE_MATRIXCITY_GS_SCALE', 1);
+  const baseOffset = new THREE.Vector3(
     readEnvironmentNumber('VITE_MATRIXCITY_GS_OFFSET_X', 0),
     readEnvironmentNumber('VITE_MATRIXCITY_GS_OFFSET_Y', 0),
     readEnvironmentNumber('VITE_MATRIXCITY_GS_OFFSET_Z', 0),
   );
-  splat.opacity = 1;
-  scene.add(splat);
-  await splat.initialized;
-  splat.maxSh = 3;
-  return { spark, splat };
+  let disposed = false;
+  let contextPromise: Promise<void> | null = null;
+
+  const addTile = async (tile: GaussianTileSource) => {
+    if (disposed) return;
+    // Every exported tile stores ENU coordinates relative to its own origin.
+    // Applying the origin delta after the ENU-to-Three rotation keeps all nine
+    // independently compressed files aligned in one metric study scene.
+    const originOffset = source.manifestUrl
+      ? new THREE.Vector3(...enuToScene(tile.origin_enu_m))
+      : new THREE.Vector3();
+    const splat = new SplatMesh({ url: tile.resolvedUrl });
+    splat.rotation.x = -Math.PI / 2;
+    splat.scale.setScalar(scale);
+    splat.position.copy(originOffset.multiplyScalar(scale).add(baseOffset));
+    splat.opacity = 1;
+    scene.add(splat);
+    try {
+      await splat.initialized;
+      if (disposed) {
+        scene.remove(splat);
+        splat.dispose?.();
+        return;
+      }
+      // The exporter already enforces a bounded splat budget. Spark Tiny LoD
+      // would merge facade detail again, so each tile keeps its full SH3 data.
+      splat.maxSh = 3;
+      loadedSplats.push(splat);
+    } catch (error) {
+      scene.remove(splat);
+      splat.dispose?.();
+      throw error;
+    }
+  };
+
+  try {
+    await addTile(primary);
+  } catch (error) {
+    scene.remove(spark);
+    spark.dispose?.();
+    throw error;
+  }
+  onStatus?.('ready');
+
+  return {
+    loadContext: () => {
+      if (contextPromise || context.length === 0 || disposed) {
+        return contextPromise ?? Promise.resolve();
+      }
+      onStatus?.('streaming');
+      // Context tiles are deliberately loaded one at a time. This bounds peak
+      // decode memory and prevents one participant from opening eight large
+      // HF downloads concurrently when Explore Scene is first selected.
+      contextPromise = (async () => {
+        let failures = 0;
+        for (const tile of context) {
+          if (disposed) break;
+          try {
+            await addTile(tile);
+          } catch {
+            failures += 1;
+          }
+        }
+        if (!disposed) onStatus?.(failures > 0 ? 'partial' : 'ready');
+      })();
+      return contextPromise;
+    },
+    dispose: () => {
+      disposed = true;
+      loadedSplats.forEach((splat) => splat.dispose?.());
+      spark.dispose?.();
+    },
+  };
 }
 
 function readEnvironmentNumber(key: string, fallback: number) {
