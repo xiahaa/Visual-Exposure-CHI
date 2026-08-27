@@ -17,6 +17,7 @@ FRONTEND_INDEX_PATH = FRONTEND_DIST_DIR / "index.html"
 FRONTEND_FAVICON_PATH = FRONTEND_DIST_DIR / "favicon.ico"
 FRONTEND_ASSETS_DIR = FRONTEND_DIST_DIR / "assets"
 FRONTEND_SCENARIOS_DIR = FRONTEND_DIST_DIR / "scenarios"
+GS_ASSETS_DIR = ROOT_DIR / "assets"
 
 app = FastAPI(title="CHI Drone Visual Exposure Prototype")
 
@@ -80,6 +81,37 @@ def favicon() -> Response:
     if FRONTEND_FAVICON_PATH.exists():
         return FileResponse(FRONTEND_FAVICON_PATH)
     return Response(status_code=204)
+
+
+@app.api_route(
+    "/gs-assets/{asset_name}",
+    methods=["GET", "HEAD"],
+    include_in_schema=False,
+)
+def gaussian_splat_asset(asset_name: str) -> Response:
+    """Serve an immutable browser-ready Gaussian Splatting asset.
+
+    The route deliberately accepts a filename rather than an arbitrary path.
+    This keeps study assets outside the frontend bundle while preventing path
+    traversal into other files in the backend container.
+    """
+
+    if Path(asset_name).name != asset_name or not asset_name.endswith(".spz"):
+        raise HTTPException(status_code=404, detail="Gaussian asset not found")
+
+    asset_path = GS_ASSETS_DIR / asset_name
+    if not asset_path.is_file():
+        raise HTTPException(status_code=404, detail="Gaussian asset not found")
+
+    return FileResponse(
+        asset_path,
+        media_type="application/octet-stream",
+        headers={
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "Cross-Origin-Resource-Policy": "cross-origin",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 @app.get("/api/health")
 def health() -> dict[str, str]:

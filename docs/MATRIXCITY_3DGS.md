@@ -54,6 +54,13 @@ convert the subset once, place the PLY (or a compressed Spark-compatible format)
 in object storage/CDN with CORS enabled, and set `VITE_MATRIXCITY_GS_URL` to the
 public URL at build time. Do not publish the complete 148-tile asset.
 
+The current pilot deployment stores the versioned SPZ in the Hugging Face
+Space repository and serves it from `/gs-assets/` with immutable caching. This
+keeps the Vercel bundle small and uses the participant's browser GPU for
+rendering. The route is a deployment fallback, not a server-side GS renderer;
+moving the same file to an object-storage CDN requires only an environment
+variable update.
+
 MatrixCity is the complete visual environment for the event study. The UAV,
 resident, camera frustum, routes, and physical-clarity overlays use the same
 local ENU metre frame defined in `frontend/src/matrixCityStudyScene.json`.

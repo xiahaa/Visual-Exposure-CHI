@@ -62,7 +62,12 @@ After the Hugging Face Space is live, set the Vercel environment variable:
 
 ```text
 VITE_API_BASE_URL=https://<user-or-org>-<space-name>.hf.space
+VITE_MATRIXCITY_GS_URL=https://<user-or-org>-<space-name>.hf.space/gs-assets/matrixcity-tile19-study-v1.spz
 ```
+
+The Space-hosted SPZ is an immediate deployment fallback. For a formal study
+with mainland-China participants, upload the same immutable file to OSS/COS
+with CDN and CORS enabled, then replace only `VITE_MATRIXCITY_GS_URL`.
 
 For a live study, mount persistent storage in the backend and set:
 
