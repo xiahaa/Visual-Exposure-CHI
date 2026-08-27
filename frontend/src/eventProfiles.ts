@@ -1,3 +1,9 @@
+import {
+  enuToScene,
+  MATRIX_CITY_RESIDENT_FEET,
+  MATRIX_CITY_STUDY_SCENE,
+} from './matrixCityScene';
+
 export type EventProfileId = 'A' | 'B' | 'C' | 'D';
 export type DisclosureCondition = 'M' | 'S' | 'V';
 export type ExposureLevel = 'low' | 'high';
@@ -28,7 +34,11 @@ export type EventPose = {
 };
 
 export const EVENT_DURATION_SECONDS = 24;
-export const TARGET_BALCONY = { x: 0, y: 35.5, z: 0 } as const;
+export const TARGET_BALCONY = {
+  x: MATRIX_CITY_RESIDENT_FEET[0],
+  y: MATRIX_CITY_RESIDENT_FEET[1],
+  z: MATRIX_CITY_RESIDENT_FEET[2],
+} as const;
 
 export const EVENT_PROFILES: Record<EventProfileId, EventProfile> = {
   A: {
@@ -106,51 +116,56 @@ export function readDisclosureCondition(value: string | null): DisclosureConditi
  */
 export function sampleEventPose(profile: EventProfile, time: number): EventPose {
   const progress = clamp(time / profile.durationSeconds);
+  const trajectory = MATRIX_CITY_STUDY_SCENE.trajectories[profile.trajectoryId];
+  const start = enuToScene(trajectory.start_enu_m);
+  const end = enuToScene(trajectory.end_enu_m);
+  const targetStart = enuToScene(trajectory.camera_target_start_enu_m);
+  const targetEnd = enuToScene(trajectory.camera_target_end_enu_m);
+  const easedProgress = easeInOut(progress);
+  const drone: [number, number, number] = [
+    lerp(start[0], end[0], easedProgress),
+    lerp(start[1], end[1], easedProgress) + Math.sin(progress * Math.PI) * 0.8,
+    lerp(start[2], end[2], easedProgress),
+  ];
+  const configuredTarget: [number, number, number] = [
+    lerp(targetStart[0], targetEnd[0], easedProgress),
+    lerp(targetStart[1], targetEnd[1], easedProgress),
+    lerp(targetStart[2], targetEnd[2], easedProgress),
+  ];
+
   if (profile.trajectoryId === 'slow_offset') {
-    const x = lerp(-23, 23, easeInOut(progress));
-    const y = TARGET_BALCONY.y + 7.5 + Math.sin(progress * Math.PI) * 0.8;
-    const z = 13.5;
-    // The camera points across the street toward the opposite facade. This is
-    // still well away from the resident, but produces an intelligible UAV
-    // first-person image instead of an empty sky/ground frame.
-    const cameraTarget: [number, number, number] = [12, 27, 75];
+    const cameraTarget: [number, number, number] = configuredTarget;
     const cameraDistance = Math.hypot(
-      cameraTarget[0] - x,
-      cameraTarget[2] - z,
+      cameraTarget[0] - drone[0],
+      cameraTarget[2] - drone[2],
     );
     return {
       time,
       progress,
-      drone: [x, y, z],
+      drone,
       cameraTarget,
       residentVisible: false,
       exposure: 0,
-      distanceToBalconyM: distance3([x, y, z], [TARGET_BALCONY.x, TARGET_BALCONY.y, TARGET_BALCONY.z]),
-      gimbalPitchDeg: -Math.atan2(y - cameraTarget[1], cameraDistance) * 180 / Math.PI,
+      distanceToBalconyM: distance3(drone, [TARGET_BALCONY.x, TARGET_BALCONY.y, TARGET_BALCONY.z]),
+      gimbalPitchDeg: -Math.atan2(drone[1] - cameraTarget[1], cameraDistance) * 180 / Math.PI,
     };
   }
 
-  const x = lerp(-72, 72, easeInOut(progress));
-  const y = TARGET_BALCONY.y + 10 + Math.sin(progress * Math.PI) * 1.2;
-  // Keep the high-exposure pass 30% farther from the target facade than the
-  // previous 40 m implementation while preserving target tracking.
-  const z = 52;
   const inViewWeight = smoothWindow(progress, 0.24, 0.34, 0.68, 0.78);
-  const cameraTarget: [number, number, number] = [
-    TARGET_BALCONY.x,
-    TARGET_BALCONY.y + 0.5,
-    TARGET_BALCONY.z,
-  ];
-  const horizontalDistance = Math.hypot(x - TARGET_BALCONY.x, z - TARGET_BALCONY.z);
+  const cameraTarget: [number, number, number] = configuredTarget;
+  const horizontalDistance = Math.hypot(
+    drone[0] - TARGET_BALCONY.x,
+    drone[2] - TARGET_BALCONY.z,
+  );
   return {
     time,
     progress,
-    drone: [x, y, z],
+    drone,
     cameraTarget,
     residentVisible: inViewWeight > 0.35,
     exposure: inViewWeight,
-    distanceToBalconyM: distance3([x, y, z], [TARGET_BALCONY.x, TARGET_BALCONY.y, TARGET_BALCONY.z]),
-    gimbalPitchDeg: -Math.atan2(y - TARGET_BALCONY.y, horizontalDistance) * 180 / Math.PI,
+    distanceToBalconyM: distance3(drone, [TARGET_BALCONY.x, TARGET_BALCONY.y, TARGET_BALCONY.z]),
+    gimbalPitchDeg: -Math.atan2(drone[1] - TARGET_BALCONY.y, horizontalDistance) * 180 / Math.PI,
   };
 }
 

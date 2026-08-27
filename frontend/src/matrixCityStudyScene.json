@@ -1,0 +1,54 @@
+{
+  "id": "matrixcity_block3_tile19_event_study_01",
+  "coordinate_frame": "matrixcity_big_city_local_enu_m",
+  "tile_id": "block3_tile19",
+  "page_ids": [
+    "e+00000_n+00035",
+    "e+00000_n+00036",
+    "e+00000_n+00037",
+    "e+00000_n+00038",
+    "e+00001_n+00035",
+    "e+00001_n+00036",
+    "e+00001_n+00037",
+    "e+00001_n+00038",
+    "e+00002_n+00035",
+    "e+00002_n+00036",
+    "e+00002_n+00037",
+    "e+00002_n+00038",
+    "e+00003_n+00035",
+    "e+00003_n+00036",
+    "e+00003_n+00037",
+    "e+00003_n+00038"
+  ],
+  "asset_origin_enu_m": [200.0, 3700.0, -4.334944725],
+  "asset_bounds_enu_m": [0.0, 3500.0, 400.0, 3900.0],
+  "safe_flight_bounds_enu_m": [60.0, 3560.0, 340.0, 3840.0],
+  "target": {
+    "facade_center_enu_m": [238.0, 3720.0, 40.0],
+    "facade_normal_enu": [0.0, -1.0, 0.0],
+    "facade_width_m": 44.0,
+    "facade_height_m": 78.0,
+    "resident_feet_enu_m": [238.0, 3718.5, 39.0],
+    "resident_eye_height_m": 1.62
+  },
+  "camera": {
+    "hfov_deg": 68.0,
+    "image_width_px": 1920,
+    "min_depth_m": 2.0,
+    "max_depth_m": 130.0
+  },
+  "trajectories": {
+    "slow_offset": {
+      "start_enu_m": [70.0, 3570.0, 120.0],
+      "end_enu_m": [330.0, 3830.0, 120.0],
+      "camera_target_start_enu_m": [90.0, 3650.0, 24.0],
+      "camera_target_end_enu_m": [210.0, 3810.0, 24.0]
+    },
+    "fast_tracking": {
+      "start_enu_m": [70.0, 3570.0, 125.0],
+      "end_enu_m": [330.0, 3830.0, 125.0],
+      "camera_target_start_enu_m": [238.0, 3718.5, 40.62],
+      "camera_target_end_enu_m": [238.0, 3718.5, 40.62]
+    }
+  }
+}

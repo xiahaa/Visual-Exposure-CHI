@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  Camera,
   CheckCircle2,
   Clipboard,
   Database,
@@ -7,14 +8,22 @@ import {
   FileText,
   Maximize2,
   Minimize2,
+  Move3d,
+  Orbit,
   Pause,
   Play,
   RotateCcw,
+  ScanLine,
   ShieldCheck,
   UserRound,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { EventMediaScene, type EventSceneMode } from './EventMediaScene';
+import {
+  EventMediaScene,
+  type EventSceneInteraction,
+  type EventSceneMode,
+  type GaussianAssetStatus,
+} from './EventMediaScene';
 import {
   EVENT_PROFILES,
   EVENT_DURATION_SECONDS,
@@ -68,12 +77,27 @@ export function EventStudyRunner() {
   const [playing, setPlaying] = useState(false);
   const [activeTab, setActiveTab] = useState<VepTab>('overview');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [vepFollowUav, setVepFollowUav] = useState(true);
+  const [vepShowFrustum, setVepShowFrustum] = useState(true);
+  const [vepShowClarity, setVepShowClarity] = useState(true);
+  const [vepResetViewNonce, setVepResetViewNonce] = useState(0);
+  const [gaussianStatus, setGaussianStatus] = useState<GaussianAssetStatus>('procedural');
   const mediaRef = useRef<HTMLElement | null>(null);
   const studyTokenRef = useRef<string | null>(null);
   const eventSequenceRef = useRef(Math.floor(Date.now() / 10));
 
   const pose = useMemo(() => sampleEventPose(profile, time), [profile, time]);
   const facts = useMemo(() => buildDisclosureFacts(profile, language), [language, profile]);
+  const vepInteraction = useMemo<EventSceneInteraction>(() => ({
+    enabled: true,
+    followUav: vepFollowUav,
+    showFrustum: vepShowFrustum,
+    showClarity: vepShowClarity,
+  }), [vepFollowUav, vepShowClarity, vepShowFrustum]);
+  const gaussianAssetUrl = useMemo(() => {
+    const configured = import.meta.env.VITE_MATRIXCITY_GS_URL;
+    return typeof configured === 'string' && configured.trim() ? configured.trim() : undefined;
+  }, []);
 
   useEffect(() => {
     document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
@@ -314,8 +338,8 @@ export function EventStudyRunner() {
             </button>
           </div>
           <div className="initial-dual-grid">
-            <ScenePanel index="01" mode="external" profile={profile} time={time} reveal={false} language={language} />
-            <ScenePanel index="02" mode="resident" profile={profile} time={time} reveal={false} language={language} />
+            <ScenePanel index="01" mode="external" profile={profile} time={time} reveal={false} language={language} gaussianAssetUrl={gaussianAssetUrl} />
+            <ScenePanel index="02" mode="resident" profile={profile} time={time} reveal={false} language={language} gaussianAssetUrl={gaussianAssetUrl} />
           </div>
           <div className="locked-progress" aria-label={text(language, 'Playback progress', '播放进度')}>
             <i style={{ width: `${(time / EVENT_DURATION_SECONDS) * 100}%` }} />
@@ -352,11 +376,44 @@ export function EventStudyRunner() {
               {isFullscreen ? text(language, 'Exit fullscreen', '退出全屏') : text(language, 'Fullscreen', '全屏播放')}
             </button>
           </div>
-          <div className="reveal-triple-grid">
-            <ScenePanel index="01" mode="external" profile={profile} time={time} reveal language={language} compact />
-            <ScenePanel index="02" mode="resident" profile={profile} time={time} reveal language={language} compact />
-            <ScenePanel index="03" mode="camera" profile={profile} time={time} reveal language={language} compact />
-          </div>
+          {condition === 'V' ? (
+            <VepEvidenceStage
+              profile={profile}
+              language={language}
+              time={time}
+              interaction={vepInteraction}
+              resetViewNonce={vepResetViewNonce}
+              gaussianAssetUrl={gaussianAssetUrl}
+              gaussianStatus={gaussianStatus}
+              onGaussianStatusChange={setGaussianStatus}
+              onFollowChange={(followUav) => {
+                setVepFollowUav(followUav);
+                void recordEvent('vep_camera_mode_changed', 'disclosure', {
+                  mode: followUav ? 'follow_uav' : 'free_explore',
+                }).catch(() => undefined);
+              }}
+              onFrustumChange={(showFrustum) => {
+                setVepShowFrustum(showFrustum);
+                void recordEvent('vep_frustum_toggled', 'disclosure', { visible: showFrustum })
+                  .catch(() => undefined);
+              }}
+              onClarityChange={(showClarity) => {
+                setVepShowClarity(showClarity);
+                void recordEvent('vep_clarity_toggled', 'disclosure', { visible: showClarity })
+                  .catch(() => undefined);
+              }}
+              onResetView={() => {
+                setVepResetViewNonce((value) => value + 1);
+                void recordEvent('vep_view_reset', 'disclosure').catch(() => undefined);
+              }}
+            />
+          ) : (
+            <div className="reveal-triple-grid standard-disclosure-grid">
+              <ScenePanel index="01" mode="external" profile={profile} time={time} reveal={false} language={language} compact gaussianAssetUrl={gaussianAssetUrl} />
+              <ScenePanel index="02" mode="resident" profile={profile} time={time} reveal={false} language={language} compact gaussianAssetUrl={gaussianAssetUrl} />
+              <ScenePanel index="03" mode="camera" profile={profile} time={time} reveal={false} language={language} compact gaussianAssetUrl={gaussianAssetUrl} />
+            </div>
+          )}
           <RevealTimeline
             profile={profile}
             language={language}
@@ -365,6 +422,14 @@ export function EventStudyRunner() {
             onTimeChange={(next) => {
               setTime(next);
               setPlaying(false);
+            }}
+            scrubbable={condition === 'V'}
+            onScrubCommitted={() => {
+              if (condition === 'V') {
+                void recordEvent('vep_timeline_scrubbed', 'disclosure', {
+                  time_seconds: Number(time.toFixed(2)),
+                }).catch(() => undefined);
+              }
             }}
             onToggle={() => {
               if (time >= EVENT_DURATION_SECONDS) setTime(0);
@@ -423,6 +488,140 @@ export function EventStudyRunner() {
   );
 }
 
+function VepEvidenceStage({
+  profile,
+  language,
+  time,
+  interaction,
+  resetViewNonce,
+  gaussianAssetUrl,
+  gaussianStatus,
+  onGaussianStatusChange,
+  onFollowChange,
+  onFrustumChange,
+  onClarityChange,
+  onResetView,
+}: {
+  profile: EventProfile;
+  language: StudyLanguage;
+  time: number;
+  interaction: EventSceneInteraction;
+  resetViewNonce: number;
+  gaussianAssetUrl?: string;
+  gaussianStatus: GaussianAssetStatus;
+  onGaussianStatusChange: (status: GaussianAssetStatus) => void;
+  onFollowChange: (follow: boolean) => void;
+  onFrustumChange: (visible: boolean) => void;
+  onClarityChange: (visible: boolean) => void;
+  onResetView: () => void;
+}) {
+  const assetLabels: Record<GaussianAssetStatus, [string, string]> = {
+    procedural: ['Procedural study scene', '程序化研究场景'],
+    loading: ['Loading MatrixCity 3DGS', '正在加载 MatrixCity 3DGS'],
+    ready: ['MatrixCity 3DGS subset', 'MatrixCity 3DGS 子集'],
+    error: ['Procedural fallback', '已回退至程序化场景'],
+  };
+  return (
+    <section className="vep-evidence-stage" aria-label={text(language, 'Interactive visual evidence', '交互式视觉证据')}>
+      <div className="vep-scene-toolbar">
+        <div className="vep-view-segment" aria-label={text(language, 'Scene camera mode', '场景相机模式')}>
+          <button
+            type="button"
+            className={interaction.followUav ? 'active' : ''}
+            aria-pressed={interaction.followUav}
+            onClick={() => onFollowChange(true)}
+            title={text(language, 'Keep the scene camera synchronized with the UAV', '保持场景相机与无人机同步')}
+          >
+            <Camera size={16} />{text(language, 'Follow UAV', '跟随无人机')}
+          </button>
+          <button
+            type="button"
+            className={!interaction.followUav ? 'active' : ''}
+            aria-pressed={!interaction.followUav}
+            onClick={() => onFollowChange(false)}
+            title={text(language, 'Unlock orbit, pan and zoom controls', '解锁旋转、平移和缩放')}
+          >
+            <Orbit size={16} />{text(language, 'Explore scene', '自由观察')}
+          </button>
+        </div>
+        <label className="vep-layer-toggle">
+          <input
+            type="checkbox"
+            checked={interaction.showFrustum}
+            onChange={(event) => onFrustumChange(event.target.checked)}
+          />
+          <ScanLine size={16} />
+          <span>{text(language, 'Camera frustum', '相机视锥')}</span>
+        </label>
+        <label className="vep-layer-toggle">
+          <input
+            type="checkbox"
+            checked={interaction.showClarity}
+            onChange={(event) => onClarityChange(event.target.checked)}
+          />
+          <Move3d size={16} />
+          <span>{text(language, 'Physical clarity', '物理清晰度')}</span>
+        </label>
+        <button
+          className="vep-reset-view"
+          type="button"
+          onClick={onResetView}
+          title={text(language, 'Reset scene camera', '重置场景相机')}
+          aria-label={text(language, 'Reset scene camera', '重置场景相机')}
+        >
+          <RotateCcw size={16} />
+        </button>
+        <span className={`vep-asset-status ${gaussianStatus}`}>
+          <i />{text(language, assetLabels[gaussianStatus][0], assetLabels[gaussianStatus][1])}
+        </span>
+      </div>
+
+      <div className="vep-scene-grid">
+        <ScenePanel
+          index="01"
+          mode="external"
+          profile={profile}
+          time={time}
+          reveal
+          language={language}
+          compact
+          interaction={interaction}
+          resetViewNonce={resetViewNonce}
+          gaussianAssetUrl={gaussianAssetUrl}
+          onGaussianStatusChange={onGaussianStatusChange}
+        />
+        <ScenePanel
+          index="02"
+          mode="camera"
+          profile={profile}
+          time={time}
+          reveal
+          language={language}
+          compact
+          gaussianAssetUrl={gaussianAssetUrl}
+        />
+      </div>
+
+      <div className="clarity-method-strip">
+        <div>
+          <strong>{text(language, 'Physical image clarity estimate', '物理成像清晰度估算')}</strong>
+          <span>{text(
+            language,
+            'Camera distance, projected pixel density, viewing angle and field of view',
+            '由相机距离、投影像素密度、观察角度与视场共同估算',
+          )}</span>
+        </div>
+        <div className="clarity-scale" aria-label={text(language, 'Clarity scale', '清晰度图例')}>
+          <span><i className="low" />{text(language, 'Lower', '较低')}</span>
+          <span><i className="medium" />{text(language, 'Medium', '中等')}</span>
+          <span><i className="high" />{text(language, 'Higher', '较高')}</span>
+        </div>
+        <small>{text(language, 'Not a privacy score', '不是隐私分数')}</small>
+      </div>
+    </section>
+  );
+}
+
 function ScenePanel({
   index,
   mode,
@@ -431,6 +630,10 @@ function ScenePanel({
   reveal,
   language,
   compact = false,
+  interaction,
+  resetViewNonce,
+  gaussianAssetUrl,
+  onGaussianStatusChange,
 }: {
   index: string;
   mode: EventSceneMode;
@@ -439,6 +642,10 @@ function ScenePanel({
   reveal: boolean;
   language: StudyLanguage;
   compact?: boolean;
+  interaction?: EventSceneInteraction;
+  resetViewNonce?: number;
+  gaussianAssetUrl?: string;
+  onGaussianStatusChange?: (status: GaussianAssetStatus) => void;
 }) {
   const labels: Record<EventSceneMode, [string, string]> = {
     external: [text(language, 'External flight context', '外部飞行情境'), text(language, 'Route, distance and UAV appearance', '航线、距离与无人机外观')],
@@ -447,7 +654,16 @@ function ScenePanel({
   };
   return (
     <article className={`event-view-panel ${mode}${compact ? ' compact' : ''}`}>
-      <EventMediaScene mode={mode} profile={profile} time={time} reveal={reveal} />
+      <EventMediaScene
+        mode={mode}
+        profile={profile}
+        time={time}
+        reveal={reveal}
+        interaction={interaction}
+        resetViewNonce={resetViewNonce}
+        gaussianAssetUrl={gaussianAssetUrl}
+        onGaussianStatusChange={onGaussianStatusChange}
+      />
       <div className="event-view-label"><span>{index}</span><div><strong>{labels[mode][0]}</strong><small>{labels[mode][1]}</small></div></div>
       {mode === 'camera' && <div className="camera-crosshair"><i /><b /></div>}
       <span className="synthetic-badge">{text(language, 'Synthetic', '合成画面')}</span>
@@ -461,6 +677,8 @@ function RevealTimeline({
   time,
   playing,
   onTimeChange,
+  scrubbable = true,
+  onScrubCommitted,
   onToggle,
   onRestart,
 }: {
@@ -469,6 +687,8 @@ function RevealTimeline({
   time: number;
   playing: boolean;
   onTimeChange: (value: number) => void;
+  scrubbable?: boolean;
+  onScrubCommitted?: () => void;
   onToggle: () => void;
   onRestart: () => void;
 }) {
@@ -483,16 +703,33 @@ function RevealTimeline({
       </div>
       <span className="reveal-time">{formatTime(time)}</span>
       <div className="reveal-track-wrap">
-        <input
-          type="range"
-          min="0"
-          max={EVENT_DURATION_SECONDS}
-          step="0.05"
-          value={time}
-          onChange={(event) => onTimeChange(Number(event.target.value))}
-          aria-label={text(language, 'Synchronized event timeline', '同步事件时间轴')}
-        />
-        {highExposure && <div className="in-view-window" style={{ left: '24%', width: '54%' }}><span>{text(language, 'Audited in-view interval', '已审计入镜区段')}</span></div>}
+        {scrubbable ? (
+          <input
+            type="range"
+            min="0"
+            max={EVENT_DURATION_SECONDS}
+            step="0.05"
+            value={time}
+            onChange={(event) => onTimeChange(Number(event.target.value))}
+            onPointerUp={onScrubCommitted}
+            onKeyUp={onScrubCommitted}
+            aria-label={text(language, 'Synchronized event timeline', '同步事件时间轴')}
+          />
+        ) : (
+          <span
+            className="standard-playback-track"
+            role="progressbar"
+            aria-label={text(language, 'Standard animation progress', '标准动画进度')}
+            aria-valuemin={0}
+            aria-valuemax={EVENT_DURATION_SECONDS}
+            aria-valuenow={time}
+          />
+        )}
+        {highExposure && scrubbable && (
+          <div className="in-view-window" style={{ left: '24%', width: '54%' }}>
+            <span>{text(language, 'Audited in-view interval', '已审计入镜区段')}</span>
+          </div>
+        )}
         <i className="reveal-track-progress" style={{ width: `${(time / EVENT_DURATION_SECONDS) * 100}%` }} />
       </div>
       <span className="reveal-time">{formatTime(EVENT_DURATION_SECONDS)}</span>
