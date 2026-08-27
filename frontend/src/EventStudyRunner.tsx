@@ -95,7 +95,8 @@ export function EventStudyRunner() {
     showClarity: vepShowClarity,
   }), [vepFollowUav, vepShowClarity, vepShowFrustum]);
   const gaussianAssetUrl = useMemo(() => {
-    const configured = import.meta.env.VITE_MATRIXCITY_GS_URL;
+    const configured = import.meta.env.VITE_MATRIXCITY_GS_MANIFEST_URL
+      || import.meta.env.VITE_MATRIXCITY_GS_URL;
     return typeof configured === 'string' && configured.trim() ? configured.trim() : undefined;
   }, []);
 
@@ -518,7 +519,9 @@ function VepEvidenceStage({
   const assetLabels: Record<GaussianAssetStatus, [string, string]> = {
     procedural: ['Procedural study scene', '程序化研究场景'],
     loading: ['Loading MatrixCity 3DGS', '正在加载 MatrixCity 3DGS'],
-    ready: ['MatrixCity 3DGS subset', 'MatrixCity 3DGS 子集'],
+    streaming: ['Loading surrounding tiles', '正在加载周边场景块'],
+    ready: ['MatrixCity 3DGS ready', 'MatrixCity 3DGS 已就绪'],
+    partial: ['Partial 3DGS context', '部分 3DGS 场景已加载'],
     error: ['Procedural fallback', '已回退至程序化场景'],
   };
   return (

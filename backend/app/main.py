@@ -31,7 +31,7 @@ app.add_middleware(
     ],
     allow_origin_regex=os.getenv(
         "CORS_ALLOW_ORIGIN_REGEX",
-        r"https://.*\.(vercel\.app|hf\.space)",
+        r"https://(?:.*\.(?:vercel\.app|hf\.space)|(?:www\.)?aam-privacy-study\.cn)",
     ),
     allow_credentials=False,
     allow_methods=["*"],
@@ -89,14 +89,19 @@ def favicon() -> Response:
     include_in_schema=False,
 )
 def gaussian_splat_asset(asset_name: str) -> Response:
-    """Serve an immutable browser-ready Gaussian Splatting asset.
+    """Serve an immutable browser-ready Gaussian asset or tile manifest.
 
     The route deliberately accepts a filename rather than an arbitrary path.
     This keeps study assets outside the frontend bundle while preventing path
     traversal into other files in the backend container.
     """
 
-    if Path(asset_name).name != asset_name or not asset_name.endswith(".spz"):
+    media_types = {
+        ".spz": "application/octet-stream",
+        ".json": "application/json",
+    }
+    suffix = Path(asset_name).suffix.lower()
+    if Path(asset_name).name != asset_name or suffix not in media_types:
         raise HTTPException(status_code=404, detail="Gaussian asset not found")
 
     asset_path = GS_ASSETS_DIR / asset_name
@@ -105,7 +110,7 @@ def gaussian_splat_asset(asset_name: str) -> Response:
 
     return FileResponse(
         asset_path,
-        media_type="application/octet-stream",
+        media_type=media_types[suffix],
         headers={
             "Cache-Control": "public, max-age=31536000, immutable",
             "Cross-Origin-Resource-Policy": "cross-origin",

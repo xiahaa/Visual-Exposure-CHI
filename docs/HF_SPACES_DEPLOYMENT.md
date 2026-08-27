@@ -47,11 +47,13 @@ Verify the browser-ready MatrixCity asset without downloading it:
 
 ```text
 HEAD https://<user-or-org>-<space-name>.hf.space/gs-assets/matrixcity-tile19-study-v1.spz
+GET  https://<user-or-org>-<space-name>.hf.space/gs-assets/matrixcity-neighborhood-study-v2.json
 ```
 
-The Space deployment repository stores this file under `assets/` using Git
-LFS. `FileResponse` streams it without loading the complete file into Python
-memory and marks the versioned URL as immutable for browser caching.
+The Space deployment repository stores the SPZ files under `assets/` using Git
+LFS. `FileResponse` streams them without loading complete files into Python
+memory and marks each versioned URL as immutable for browser caching. The JSON
+manifest records tile origins, bounds, splat counts, byte sizes, and load order.
 
 ## 3. Connect Vercel Frontend To The Space
 
@@ -59,6 +61,7 @@ In the Vercel project settings, set:
 
 ```text
 VITE_API_BASE_URL=https://<user-or-org>-<space-name>.hf.space
+VITE_MATRIXCITY_GS_MANIFEST_URL=https://<user-or-org>-<space-name>.hf.space/gs-assets/matrixcity-neighborhood-study-v2.json
 VITE_MATRIXCITY_GS_URL=https://<user-or-org>-<space-name>.hf.space/gs-assets/matrixcity-tile19-study-v1.spz
 ```
 
@@ -69,10 +72,13 @@ then try to call the viewer's own computer instead of the deployed backend.
 
 ## 4. CORS
 
-The backend allows Vercel preview and production domains by default:
+The backend allows Vercel preview/production domains and the study custom
+domain by default:
 
 ```text
 https://*.vercel.app
+https://aam-privacy-study.cn
+https://www.aam-privacy-study.cn
 ```
 
 To override the allowed origin regex in the Space settings, set:
@@ -96,7 +102,20 @@ CORS_ALLOW_ORIGIN_REGEX=https://(.*\.vercel\.app|visual-exposure\.example\.org)
   `libgomp1` for OpenMP support.
 - The backend keeps the same API paths, including `/api/exposure/compute` and
   `/api/planning/optimize`.
-- Serving the 25.9 MB SPZ from the Space is suitable for deployment validation
-  and a small pilot. For a larger or mainland-China study, move the same
-  immutable file to OSS/COS plus a CDN and change only
-  `VITE_MATRIXCITY_GS_URL`; no frontend code change is required.
+- The primary SPZ is 25.9 MB. Eight context tiles add 36.6 MB, for a maximum
+  neighborhood transfer of 62.5 MB (59.6 MiB) and 2.4 million splats.
+- Fixed S-condition views and UAV-camera views load only the primary tile. The
+  additional context is requested sequentially only after `Explore scene` is
+  selected in V, which bounds peak decode memory and simultaneous downloads.
+- CPU Basic provides 2 vCPU, 16 GB RAM, and 50 GB ephemeral disk. This is ample
+  for the 62.5 MB immutable asset set because GS decoding/rendering happens in
+  the participant browser, not on the Space GPU. See the official
+  [Spaces hardware table](https://huggingface.co/docs/hub/spaces-overview).
+- The limiting factor for a simultaneous pilot is network egress and the
+  Open3D API workload, not GS storage. One uncached participant may transfer up
+  to 62.5 MB; 20 simultaneous V participants may request about 1.25 GB in the
+  worst case. Do not run many 20-second Open3D jobs concurrently on 2 vCPU.
+- HF hosting is suitable for development and a small laboratory pilot. For a
+  larger or mainland-China study, move the manifest and SPZ files to OSS/COS
+  plus a CDN and change only `VITE_MATRIXCITY_GS_MANIFEST_URL`; no frontend code
+  change is required.
