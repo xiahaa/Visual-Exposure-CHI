@@ -1,13 +1,54 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { EventProfile } from './eventProfiles';
 import { sampleEventPose, TARGET_BALCONY } from './eventProfiles';
+import {
+  MATRIX_CITY_FACADE_CENTER,
+  MATRIX_CITY_FACADE_NORMAL,
+  MATRIX_CITY_RESIDENT_FEET,
+  MATRIX_CITY_STUDY_SCENE,
+} from './matrixCityScene';
 
 export type EventSceneMode = 'external' | 'resident' | 'camera';
 
 type SceneRuntime = {
-  update: (time: number, reveal: boolean) => void;
+  update: (time: number, reveal: boolean, interaction: EventSceneInteraction) => void;
+  resetView: () => void;
   dispose: () => void;
+};
+
+export type EventSceneInteraction = {
+  enabled: boolean;
+  followUav: boolean;
+  showFrustum: boolean;
+  showClarity: boolean;
+};
+
+export type GaussianAssetStatus = 'procedural' | 'loading' | 'ready' | 'error';
+
+// The procedural source mesh spans roughly 12.2 scene meters from blade tip
+// to blade tip. A 0.25 scale produces a 3.05 m professional quadcopter, large
+// enough for facade inspection but not implausibly dominant from a balcony.
+const UAV_MODEL_SCALE = 0.25;
+const UAV_GIMBAL_OFFSET_M = 0.28;
+const RESIDENT_VERTICAL_CONTEXT_FOV_DEG = 84;
+const RESIDENT_LOOK_BELOW_UAV_M = 4;
+const EVENT_CAMERA_HFOV_DEG = MATRIX_CITY_STUDY_SCENE.camera.hfov_deg;
+const EVENT_CAMERA_IMAGE_WIDTH_PX = MATRIX_CITY_STUDY_SCENE.camera.image_width_px;
+const EVENT_CAMERA_MIN_DEPTH_M = MATRIX_CITY_STUDY_SCENE.camera.min_depth_m;
+const EVENT_CAMERA_MAX_DEPTH_M = MATRIX_CITY_STUDY_SCENE.camera.max_depth_m;
+
+const DEFAULT_INTERACTION: EventSceneInteraction = {
+  enabled: false,
+  followUav: true,
+  showFrustum: false,
+  showClarity: false,
+};
+
+type ClaritySurface = {
+  mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  normal: THREE.Vector3;
 };
 
 export function EventMediaScene({
@@ -15,11 +56,19 @@ export function EventMediaScene({
   profile,
   time,
   reveal,
+  interaction = DEFAULT_INTERACTION,
+  resetViewNonce = 0,
+  gaussianAssetUrl,
+  onGaussianStatusChange,
 }: {
   mode: EventSceneMode;
   profile: EventProfile;
   time: number;
   reveal: boolean;
+  interaction?: EventSceneInteraction;
+  resetViewNonce?: number;
+  gaussianAssetUrl?: string;
+  onGaussianStatusChange?: (status: GaussianAssetStatus) => void;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<SceneRuntime | null>(null);
@@ -30,9 +79,16 @@ export function EventMediaScene({
     if (!host) return;
     setStatus('loading');
     try {
-      const runtime = createSceneRuntime(host, mode, profile);
+      const runtime = createSceneRuntime(
+        host,
+        mode,
+        profile,
+        interaction.enabled,
+        gaussianAssetUrl,
+        onGaussianStatusChange,
+      );
       runtimeRef.current = runtime;
-      runtime.update(time, reveal);
+      runtime.update(time, reveal, interaction);
       setStatus('ready');
     } catch {
       setStatus('error');
@@ -41,11 +97,15 @@ export function EventMediaScene({
       runtimeRef.current?.dispose();
       runtimeRef.current = null;
     };
-  }, [mode, profile]);
+  }, [gaussianAssetUrl, interaction.enabled, mode, onGaussianStatusChange, profile]);
 
   useEffect(() => {
-    runtimeRef.current?.update(time, reveal);
-  }, [reveal, time]);
+    runtimeRef.current?.update(time, reveal, interaction);
+  }, [interaction, reveal, time]);
+
+  useEffect(() => {
+    if (resetViewNonce > 0) runtimeRef.current?.resetView();
+  }, [resetViewNonce]);
 
   return (
     <div className="event-scene-host" ref={hostRef} data-render-status={status}>
@@ -55,8 +115,18 @@ export function EventMediaScene({
   );
 }
 
-function createSceneRuntime(host: HTMLDivElement, mode: EventSceneMode, profile: EventProfile): SceneRuntime {
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+function createSceneRuntime(
+  host: HTMLDivElement,
+  mode: EventSceneMode,
+  profile: EventProfile,
+  interactive: boolean,
+  gaussianAssetUrl?: string,
+  onGaussianStatusChange?: (status: GaussianAssetStatus) => void,
+): SceneRuntime {
+  const renderer = new THREE.WebGLRenderer({
+    antialias: !gaussianAssetUrl,
+    powerPreference: 'high-performance',
+  });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   // A restrained filmic curve preserves facade/window contrast while keeping
@@ -75,9 +145,12 @@ function createSceneRuntime(host: HTMLDivElement, mode: EventSceneMode, profile:
   // direct atmospheric colors so every pixel remains inspectable.
   scene.fog = null;
   addLighting(scene);
-  addEnvironment(scene);
+  const matrixCityMode = Boolean(gaussianAssetUrl);
+  const claritySurfaces = matrixCityMode
+    ? addMatrixCityClaritySurfaces(scene, interactive && mode === 'external')
+    : addEnvironment(scene, interactive && mode === 'external');
 
-  const balcony = createTargetBalcony();
+  const balcony = matrixCityMode ? createMatrixCityResidentTarget() : createTargetBalcony();
   scene.add(balcony.group);
 
   const uav = createUavModel(profile.uavAppearance);
@@ -88,16 +161,59 @@ function createSceneRuntime(host: HTMLDivElement, mode: EventSceneMode, profile:
   frustum.visible = false;
   scene.add(frustum);
 
-  const camera = new THREE.PerspectiveCamera(mode === 'camera' ? 42 : mode === 'resident' ? 68 : 50, 1, 0.12, 600);
+  const camera = new THREE.PerspectiveCamera(
+    mode === 'camera' ? EVENT_CAMERA_HFOV_DEG : mode === 'resident' ? RESIDENT_VERTICAL_CONTEXT_FOV_DEG : 50,
+    1,
+    0.12,
+    600,
+  );
   camera.up.set(0, 1, 0);
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enabled = interactive && mode === 'external';
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.075;
+  controls.screenSpacePanning = true;
+  controls.minDistance = 8;
+  controls.maxDistance = 280;
+  controls.maxPolarAngle = Math.PI * 0.49;
 
   const dronePosition = new THREE.Vector3();
   const cameraTarget = new THREE.Vector3();
-  // The eye remains behind the railing (z=2.1) and at a natural standing eye
-  // height. The old z=2.5 position placed the observer outside the balcony.
-  const residentEye = new THREE.Vector3(TARGET_BALCONY.x - 0.65, TARGET_BALCONY.y + 1.62, 0.25);
+  const residentEye = matrixCityMode
+    ? new THREE.Vector3(...MATRIX_CITY_RESIDENT_FEET).add(new THREE.Vector3(
+      MATRIX_CITY_FACADE_NORMAL[0] * 0.18,
+      MATRIX_CITY_STUDY_SCENE.target.resident_eye_height_m,
+      MATRIX_CITY_FACADE_NORMAL[2] * 0.18,
+    ))
+    : new THREE.Vector3(TARGET_BALCONY.x - 0.65, TARGET_BALCONY.y + 1.62, 0.25);
   const externalPosition = new THREE.Vector3();
   const externalTarget = new THREE.Vector3();
+  let latestTime = 0;
+  let latestReveal = false;
+  let latestInteraction = DEFAULT_INTERACTION;
+  let disposed = false;
+  let sparkResource: { dispose?: () => void } | null = null;
+  let splatResource: { dispose?: () => void } | null = null;
+
+  if (gaussianAssetUrl) {
+    onGaussianStatusChange?.('loading');
+    void loadGaussianEnvironment(scene, renderer, gaussianAssetUrl)
+      .then(({ spark, splat }) => {
+        if (disposed) {
+          splat.dispose?.();
+          spark.dispose?.();
+          return;
+        }
+        sparkResource = spark;
+        splatResource = splat;
+        onGaussianStatusChange?.('ready');
+      })
+      .catch(() => {
+        if (!disposed) onGaussianStatusChange?.('error');
+      });
+  } else {
+    onGaussianStatusChange?.('procedural');
+  }
 
   const resize = () => {
     const width = Math.max(1, host.clientWidth);
@@ -107,7 +223,10 @@ function createSceneRuntime(host: HTMLDivElement, mode: EventSceneMode, profile:
     camera.updateProjectionMatrix();
   };
 
-  const update = (time: number, reveal: boolean) => {
+  const update = (time: number, reveal: boolean, interaction: EventSceneInteraction) => {
+    latestTime = time;
+    latestReveal = reveal;
+    latestInteraction = interaction;
     const pose = sampleEventPose(profile, time);
     dronePosition.fromArray(pose.drone);
     cameraTarget.fromArray(pose.cameraTarget);
@@ -127,7 +246,8 @@ function createSceneRuntime(host: HTMLDivElement, mode: EventSceneMode, profile:
       light.scale.setScalar(active ? 1.18 : 0.86);
     });
 
-    balcony.person.rotation.y = Math.sin(time * 0.42) * 0.08;
+    balcony.person.rotation.y = Number(balcony.person.userData.baseYaw ?? 0)
+      + Math.sin(time * 0.42) * 0.08;
     balcony.phoneArm.rotation.z = -0.2 + Math.sin(time * 0.7) * 0.025;
     balcony.targetGlow.visible = reveal && mode !== 'resident' && profile.exposureLevel === 'high';
     (balcony.targetGlow.material as THREE.MeshBasicMaterial).opacity = reveal ? 0.08 + pose.exposure * 0.2 : 0;
@@ -136,7 +256,17 @@ function createSceneRuntime(host: HTMLDivElement, mode: EventSceneMode, profile:
       // A profile-specific establishing camera keeps both the balcony facade
       // and UAV in frame. Partial lateral following preserves legibility while
       // retaining the same relative geometry visible from the resident view.
-      if (profile.exposureLevel === 'low') {
+      if (matrixCityMode) {
+        externalTarget.lerpVectors(
+          new THREE.Vector3(TARGET_BALCONY.x, TARGET_BALCONY.y + 2, TARGET_BALCONY.z),
+          dronePosition,
+          0.38,
+        );
+        // MatrixCity is aerially captured. This high oblique establishing pose
+        // remains close to its observed camera domain while framing the UAV,
+        // route and target building together.
+        externalPosition.copy(externalTarget).add(new THREE.Vector3(52, 150, 68));
+      } else if (profile.exposureLevel === 'low') {
         externalPosition.set(dronePosition.x * 0.18 + 42, 51, 55);
         externalTarget.lerpVectors(
           new THREE.Vector3(TARGET_BALCONY.x, TARGET_BALCONY.y + 2, TARGET_BALCONY.z),
@@ -153,38 +283,101 @@ function createSceneRuntime(host: HTMLDivElement, mode: EventSceneMode, profile:
           0.5,
         );
       }
-      camera.position.copy(externalPosition);
-      camera.lookAt(externalTarget);
-      camera.fov = profile.exposureLevel === 'high' ? 62 : 50;
+      controls.enabled = interactive && !interaction.followUav;
+      if (!interactive || interaction.followUav) {
+        camera.position.copy(externalPosition);
+        camera.lookAt(externalTarget);
+        controls.target.copy(externalTarget);
+      }
+      camera.fov = matrixCityMode ? 42 : profile.exposureLevel === 'high' ? 62 : 50;
       camera.updateProjectionMatrix();
-      frustum.visible = reveal;
-      placeFrustum(frustum, dronePosition.clone().add(new THREE.Vector3(0, -0.9, 0)), cameraTarget);
+      frustum.visible = reveal && interaction.showFrustum;
+      placeFrustum(
+        frustum,
+        dronePosition.clone().add(new THREE.Vector3(0, -UAV_GIMBAL_OFFSET_M, 0)),
+        cameraTarget,
+      );
+      updateClaritySurfaces(
+        claritySurfaces,
+        dronePosition.clone().add(new THREE.Vector3(0, -UAV_GIMBAL_OFFSET_M, 0)),
+        cameraTarget,
+        reveal && interaction.showClarity,
+      );
     } else if (mode === 'resident') {
       camera.position.copy(residentEye);
-      camera.lookAt(dronePosition.clone().add(new THREE.Vector3(0, -0.6, 0)));
-      frustum.visible = false;
-    } else {
-      camera.position.copy(dronePosition).add(new THREE.Vector3(0, -0.85, 0));
-      camera.lookAt(cameraTarget);
-      camera.fov = 42;
+      // Looking directly at an elevated UAV produces a sky-dominated frame.
+      // A wider lens and a small downward bias keep the same UAV pose visible
+      // while retaining facade and street context as spatial evidence.
+      camera.lookAt(
+        dronePosition.clone().add(new THREE.Vector3(0, -RESIDENT_LOOK_BELOW_UAV_M, 0)),
+      );
+      camera.fov = RESIDENT_VERTICAL_CONTEXT_FOV_DEG;
       camera.updateProjectionMatrix();
       frustum.visible = false;
+      updateClaritySurfaces(claritySurfaces, dronePosition, cameraTarget, false);
+    } else {
+      camera.position.copy(dronePosition).add(new THREE.Vector3(0, -UAV_GIMBAL_OFFSET_M, 0));
+      camera.lookAt(cameraTarget);
+      camera.fov = EVENT_CAMERA_HFOV_DEG;
+      camera.updateProjectionMatrix();
+      frustum.visible = false;
+      updateClaritySurfaces(claritySurfaces, dronePosition, cameraTarget, false);
     }
 
     renderer.render(scene, camera);
   };
 
+  const resetView = () => {
+    const pose = sampleEventPose(profile, latestTime);
+    const drone = new THREE.Vector3().fromArray(pose.drone);
+    if (matrixCityMode) {
+      controls.target.lerpVectors(
+        new THREE.Vector3(TARGET_BALCONY.x, TARGET_BALCONY.y + 2, TARGET_BALCONY.z),
+        drone,
+        0.38,
+      );
+      camera.position.copy(controls.target).add(new THREE.Vector3(52, 150, 68));
+    } else if (profile.exposureLevel === 'low') {
+      camera.position.set(drone.x * 0.18 + 42, 51, 55);
+    } else {
+      camera.position.set(drone.x * 0.32 + 46, 60, 68);
+    }
+    if (!matrixCityMode) {
+      controls.target.lerpVectors(
+        new THREE.Vector3(TARGET_BALCONY.x, TARGET_BALCONY.y + 2, TARGET_BALCONY.z),
+        drone,
+        profile.exposureLevel === 'low' ? 0.56 : 0.5,
+      );
+    }
+    camera.lookAt(controls.target);
+    controls.update();
+    update(latestTime, latestReveal, latestInteraction);
+  };
+
   const observer = new ResizeObserver(() => {
     resize();
-    update(0, false);
+    update(latestTime, latestReveal, latestInteraction);
   });
   observer.observe(host);
   resize();
 
+  if (interactive || gaussianAssetUrl) {
+    renderer.setAnimationLoop(() => {
+      if (controls.enabled) controls.update();
+      renderer.render(scene, camera);
+    });
+  }
+
   return {
     update,
+    resetView,
     dispose: () => {
+      disposed = true;
       observer.disconnect();
+      renderer.setAnimationLoop(null);
+      controls.dispose();
+      splatResource?.dispose?.();
+      sparkResource?.dispose?.();
       scene.traverse((object) => {
         if (object instanceof THREE.Mesh || object instanceof THREE.LineSegments) {
           object.geometry.dispose();
@@ -212,7 +405,22 @@ function addLighting(scene: THREE.Scene) {
   scene.add(sun);
 }
 
-function addEnvironment(scene: THREE.Scene) {
+function addMatrixCityClaritySurfaces(
+  scene: THREE.Scene,
+  includeClarity: boolean,
+): ClaritySurface[] {
+  if (!includeClarity) return [];
+  return addClarityGrid(scene, {
+    center: new THREE.Vector3(...MATRIX_CITY_FACADE_CENTER),
+    normal: new THREE.Vector3(...MATRIX_CITY_FACADE_NORMAL),
+    width: MATRIX_CITY_STUDY_SCENE.target.facade_width_m,
+    height: MATRIX_CITY_STUDY_SCENE.target.facade_height_m,
+    columns: 11,
+    rows: 13,
+  });
+}
+
+function addEnvironment(scene: THREE.Scene, includeClarity: boolean): ClaritySurface[] {
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(420, 420),
     new THREE.MeshStandardMaterial({ color: 0x73847c, roughness: 0.98 }),
@@ -267,6 +475,157 @@ function addEnvironment(scene: THREE.Scene) {
   scene.add(road);
 
   addOppositeStreet(scene);
+
+  if (!includeClarity) return [];
+
+  // These thin cells are evidence overlays rather than privacy labels. Their
+  // color is recomputed from camera geometry at every pose and represents only
+  // a physical image-clarity proxy.
+  const claritySurfaces = [
+    ...addClarityGrid(scene, {
+      center: new THREE.Vector3(0, 34, -1.88),
+      normal: new THREE.Vector3(0, 0, 1),
+      width: 54,
+      height: 68,
+      columns: 9,
+      rows: 12,
+    }),
+    ...addClarityGrid(scene, {
+      center: new THREE.Vector3(12, 27, 75.22),
+      normal: new THREE.Vector3(0, 0, -1),
+      width: 158,
+      height: 54,
+      columns: 18,
+      rows: 8,
+    }),
+  ];
+  return claritySurfaces;
+}
+
+function addClarityGrid(
+  scene: THREE.Scene,
+  config: {
+    center: THREE.Vector3;
+    normal: THREE.Vector3;
+    width: number;
+    height: number;
+    columns: number;
+    rows: number;
+  },
+): ClaritySurface[] {
+  const surfaces: ClaritySurface[] = [];
+  const cellWidth = config.width / config.columns;
+  const cellHeight = config.height / config.rows;
+  for (let row = 0; row < config.rows; row += 1) {
+    for (let column = 0; column < config.columns; column += 1) {
+      const material = new THREE.MeshBasicMaterial({
+        color: 0x536466,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+      });
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(cellWidth * 0.94, cellHeight * 0.92),
+        material,
+      );
+      mesh.position.set(
+        config.center.x + (column - (config.columns - 1) / 2) * cellWidth,
+        config.center.y + (row - (config.rows - 1) / 2) * cellHeight,
+        config.center.z,
+      );
+      if (config.normal.z < 0) mesh.rotation.y = Math.PI;
+      mesh.visible = false;
+      mesh.renderOrder = 8;
+      scene.add(mesh);
+      surfaces.push({ mesh, normal: config.normal.clone().normalize() });
+    }
+  }
+  return surfaces;
+}
+
+function updateClaritySurfaces(
+  surfaces: ClaritySurface[],
+  cameraOrigin: THREE.Vector3,
+  cameraTarget: THREE.Vector3,
+  visible: boolean,
+) {
+  const opticalAxis = cameraTarget.clone().sub(cameraOrigin).normalize();
+  const halfFovCosine = Math.cos(THREE.MathUtils.degToRad(EVENT_CAMERA_HFOV_DEG / 2));
+  const focalLengthPixels = (EVENT_CAMERA_IMAGE_WIDTH_PX / 2)
+    / Math.tan(THREE.MathUtils.degToRad(EVENT_CAMERA_HFOV_DEG / 2));
+  const lowColor = new THREE.Color(0x2eaaa0);
+  const mediumColor = new THREE.Color(0xf0b449);
+  const highColor = new THREE.Color(0xf06452);
+  const inactiveColor = new THREE.Color(0x5d6a6c);
+
+  surfaces.forEach((surface) => {
+    surface.mesh.visible = visible;
+    if (!visible) return;
+
+    const toSurface = surface.mesh.position.clone().sub(cameraOrigin);
+    const distance = toSurface.length();
+    const rayDirection = toSurface.normalize();
+    const axisAlignment = opticalAxis.dot(rayDirection);
+    const inDepthRange = distance >= EVENT_CAMERA_MIN_DEPTH_M && distance <= EVENT_CAMERA_MAX_DEPTH_M;
+    const inView = inDepthRange && axisAlignment >= halfFovCosine;
+    const incidence = Math.max(0, -surface.normal.dot(rayDirection));
+    const pixelsPerMeter = focalLengthPixels / Math.max(distance, 0.001);
+    const samplingQuality = smoothstepNumber(3.5, 22, pixelsPerMeter);
+    const centreWeight = smoothstepNumber(halfFovCosine, 0.995, axisAlignment);
+    const clarity = inView ? THREE.MathUtils.clamp(samplingQuality * incidence * centreWeight, 0, 1) : 0;
+
+    if (clarity <= 0.01) {
+      surface.mesh.material.color.copy(inactiveColor);
+      surface.mesh.material.opacity = 0.08;
+    } else if (clarity < 0.5) {
+      surface.mesh.material.color.copy(lowColor).lerp(mediumColor, clarity / 0.5);
+      surface.mesh.material.opacity = 0.28 + clarity * 0.42;
+    } else {
+      surface.mesh.material.color.copy(mediumColor).lerp(highColor, (clarity - 0.5) / 0.5);
+      surface.mesh.material.opacity = 0.49 + clarity * 0.31;
+    }
+  });
+}
+
+function smoothstepNumber(edge0: number, edge1: number, value: number) {
+  const normalized = THREE.MathUtils.clamp((value - edge0) / (edge1 - edge0), 0, 1);
+  return normalized * normalized * (3 - 2 * normalized);
+}
+
+async function loadGaussianEnvironment(
+  scene: THREE.Scene,
+  renderer: THREE.WebGLRenderer,
+  url: string,
+) {
+  const { SparkRenderer, SplatMesh } = await import('@sparkjsdev/spark');
+  const spark = new SparkRenderer({ renderer });
+  scene.add(spark);
+  // This study asset is already a spatially bounded subset. Building Spark's
+  // Tiny LoD merges nearby Gaussians and noticeably softens facade evidence,
+  // while the full subset is still comfortably below the desktop splat budget.
+  const splat = new SplatMesh({ url });
+  splat.rotation.x = -Math.PI / 2;
+  splat.scale.setScalar(readEnvironmentNumber('VITE_MATRIXCITY_GS_SCALE', 1));
+  splat.position.set(
+    readEnvironmentNumber('VITE_MATRIXCITY_GS_OFFSET_X', 0),
+    readEnvironmentNumber('VITE_MATRIXCITY_GS_OFFSET_Y', 0),
+    readEnvironmentNumber('VITE_MATRIXCITY_GS_OFFSET_Z', 0),
+  );
+  splat.opacity = 1;
+  scene.add(splat);
+  await splat.initialized;
+  splat.maxSh = 3;
+  return { spark, splat };
+}
+
+function readEnvironmentNumber(key: string, fallback: number) {
+  const raw = import.meta.env[key];
+  if (typeof raw !== 'string' || raw.trim() === '') return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function addOppositeStreet(scene: THREE.Scene) {
@@ -360,6 +719,35 @@ function addOppositeStreet(scene: THREE.Scene) {
     crown.position.set(x, 6, 67.5);
     scene.add(trunk, crown);
   }
+}
+
+function createMatrixCityResidentTarget() {
+  const group = new THREE.Group();
+  group.position.set(...MATRIX_CITY_RESIDENT_FEET);
+
+  const resident = createResidentModel();
+  resident.group.scale.setScalar(0.62);
+  resident.group.userData.baseYaw = 0;
+  group.add(resident.group);
+
+  const glowMaterial = new THREE.MeshBasicMaterial({
+    color: 0xff725c,
+    transparent: true,
+    opacity: 0,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const targetGlow = new THREE.Mesh(new THREE.RingGeometry(1.5, 2.05, 44), glowMaterial);
+  targetGlow.position.set(0, MATRIX_CITY_STUDY_SCENE.target.resident_eye_height_m, 0.08);
+  targetGlow.visible = false;
+  group.add(targetGlow);
+
+  return {
+    group,
+    person: resident.group,
+    phoneArm: resident.phoneArm,
+    targetGlow,
+  };
 }
 
 function createTargetBalcony() {
@@ -551,14 +939,14 @@ function createUavModel(appearance: EventProfile['uavAppearance']) {
     }
   }
 
-  group.scale.setScalar(1.04);
+  group.scale.setScalar(UAV_MODEL_SCALE);
   return { group, rotors, gimbal, policeLights };
 }
 
 function createCameraFrustum() {
   const group = new THREE.Group();
-  const depth = 58;
-  const halfWidth = Math.tan(THREE.MathUtils.degToRad(34)) * depth;
+  const depth = EVENT_CAMERA_MAX_DEPTH_M;
+  const halfWidth = Math.tan(THREE.MathUtils.degToRad(EVENT_CAMERA_HFOV_DEG / 2)) * depth;
   const halfHeight = halfWidth / (16 / 9);
   const corners = [
     new THREE.Vector3(-halfWidth, halfHeight, depth),

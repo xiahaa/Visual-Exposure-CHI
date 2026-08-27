@@ -59,6 +59,41 @@ describe('EventStudyRunner', () => {
     expect(screen.queryByTestId('scene-camera')).not.toBeInTheDocument();
   });
 
+  it('gives only V disclosure the interactive evidence controls', async () => {
+    window.history.pushState({}, '', '/runner?role=facilitator&profile=C&disclosure=V&lang=en&preview=disclosure');
+    const { unmount } = render(<EventStudyRunner />);
+
+    expect(screen.getByRole('button', { name: 'Follow UAV' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Explore scene' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Camera frustum')).toBeChecked();
+    expect(screen.getByLabelText('Physical clarity')).toBeChecked();
+    expect(screen.getByLabelText('Synchronized event timeline')).toBeInTheDocument();
+    expect(screen.getByText('Not a privacy score')).toBeInTheDocument();
+    unmount();
+
+    window.history.pushState({}, '', '/runner?role=facilitator&profile=C&disclosure=S&lang=en&preview=disclosure');
+    render(<EventStudyRunner />);
+    expect(screen.queryByRole('button', { name: 'Explore scene' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Camera frustum')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Physical clarity')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Synchronized event timeline')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Standard animation progress')).toBeInTheDocument();
+    expect(screen.queryByText('Audited in-view interval')).not.toBeInTheDocument();
+  });
+
+  it('updates V evidence controls without changing the study condition', async () => {
+    window.history.pushState({}, '', '/runner?role=facilitator&profile=A&disclosure=V&lang=zh&preview=disclosure');
+    render(<EventStudyRunner />);
+
+    fireEvent.click(screen.getByRole('button', { name: '自由观察' }));
+    expect(screen.getByRole('button', { name: '自由观察' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByLabelText('相机视锥'));
+    fireEvent.click(screen.getByLabelText('物理清晰度'));
+    expect(screen.getByLabelText('相机视锥')).not.toBeChecked();
+    expect(screen.getByLabelText('物理清晰度')).not.toBeChecked();
+    expect(screen.getByText('交互式 VEP')).toBeInTheDocument();
+  });
+
   it('uses the server-assigned cell and issues a questionnaire completion code', async () => {
     window.history.pushState({}, '', '/runner?profile=A&disclosure=M&lang=en&entry_token=survey-entry-77');
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {

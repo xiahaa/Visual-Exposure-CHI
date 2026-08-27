@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
+    "gs:compress": "node scripts/transcode-spark-spz.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -13,6 +14,7 @@
     "@deck.gl/geo-layers": "^9.1.14",
     "@deck.gl/layers": "^9.1.14",
     "@deck.gl/react": "^9.1.14",
+    "@sparkjsdev/spark": "^2.1.0",
     "deck.gl": "^9.1.14",
     "lucide-react": "^0.468.0",
     "maplibre-gl": "^5.11.0",

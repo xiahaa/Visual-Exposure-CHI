@@ -30,6 +30,13 @@ docs/
   evidence, preference marking, and candidate-based privacy alternatives.
 - Four synchronized UAV event profiles (A-D) with M/S/V disclosure conditions,
   third-person context, resident view, and synthetic UAV-camera view.
+- V disclosure adds a synchronized evidence viewer with follow/free-orbit
+  cameras, optional camera frustum, physical image-clarity surface coloring,
+  and pose scrubbing. S disclosure remains a fixed standard 3D presentation.
+- An optional Spark renderer uses a small, offline-converted MatrixCity 3DGS
+  subset as the shared M/S/V event environment. UAV, resident, route, camera,
+  frustum, and clarity evidence use one local ENU metre frame; complete training
+  assets remain outside the repository.
 - Anonymous server-side study-cell assignment with configurable capacities,
   persistent event/response ingestion, completion-code issuance, code-based
   auditing, and structured export.
@@ -68,6 +75,8 @@ SQLite is intended for one deployed backend instance with moderate concurrent
 study traffic. Use PostgreSQL before running multiple backend replicas.
 
 See `docs/HF_SPACES_DEPLOYMENT.md` for the full checklist.
+See `docs/MATRIXCITY_3DGS.md` for the local subset export and browser-loading
+workflow.
 
 ## Core Principle
 
