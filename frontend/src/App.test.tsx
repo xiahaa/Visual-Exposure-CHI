@@ -63,7 +63,7 @@ describe('App', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mapClickIndex = 0;
-    window.history.pushState({}, '', '/');
+    window.history.pushState({}, '', '/?ui=legacy');
   });
 
   it('loads scenario data in participant mode with fixed route controls hidden', async () => {
@@ -82,12 +82,13 @@ describe('App', () => {
     expect(screen.queryByText('Compare before/after results to understand the privacy-task trade-off.')).not.toBeInTheDocument();
     expect(screen.getByText('Study role: participant')).toBeInTheDocument();
     expect(screen.queryByLabelText('Route file')).not.toBeInTheDocument();
-    expect(screen.getByText('Camera Mode')).toBeInTheDocument();
+    expect(screen.getByText(/Camera Mode/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Balanced Inspection/ })).toBeInTheDocument();
     expect(document.querySelector('.advanced-camera')).not.toHaveAttribute('open');
   });
 
   it('collapses the bilingual guide and updates steps by study condition', async () => {
+    setFacilitatorRole();
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse(scenarioFixture));
 
     render(<App />);
@@ -135,7 +136,7 @@ describe('App', () => {
     expect(await screen.findByText('GeoJSON route loaded: 3 waypoints.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Focused Detail/ }));
 
-    await userEvent.click(screen.getByRole('button', { name: 'Compute Exposure' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Compute Baseline Exposure' }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -171,7 +172,7 @@ describe('App', () => {
     await userEvent.type(screen.getByLabelText('Max Depth'), '130');
 
     expect(screen.getByText('Custom')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Compute Exposure' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Compute Baseline Exposure' }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -200,7 +201,7 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Finish Route' }));
     expect(await screen.findByText('Manual route ready: 3 waypoints.')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Compute Exposure' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Compute Baseline Exposure' }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -262,7 +263,8 @@ describe('App', () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonResponse(scenarioFixture))
-      .mockResolvedValueOnce(jsonResponse(planningFixture));
+      .mockResolvedValueOnce(jsonResponse(planningFixture))
+      .mockResolvedValueOnce(jsonResponse(exposureFixture));
 
     render(<App />);
     await screen.findByText('Residential Block Roof Inspection');
@@ -285,7 +287,7 @@ describe('App', () => {
     expect(requestBody.planner_config.evaluation_ray_height).toBe(18);
     expect(await screen.findByText('Suggested Alternatives')).toBeInTheDocument();
     expect(screen.getByText('Privacy-first')).toBeInTheDocument();
-    expect(screen.getByText('depth_limited_camera')).toBeInTheDocument();
+    expect(screen.getByText('Limited visual depth')).toBeInTheDocument();
     expect(screen.getByText(
       'Limits the effective visual depth and adjusts the camera pitch near marked privacy areas to reduce long-range recognizable exposure.',
     )).toBeInTheDocument();
@@ -293,9 +295,12 @@ describe('App', () => {
     expect(screen.getByText('Suggested alternatives generated: previewing Privacy-first.')).toBeInTheDocument();
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Apply' })[0]);
-    expect(
-      screen.getByText('Applied suggested alternative: Privacy-first. Recompute exposure to verify the final route at full fidelity.'),
-    ).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(String(fetchMock.mock.calls[2][0])).toContain('/api/exposure/compute');
+    const verificationBody = JSON.parse(String(fetchMock.mock.calls[2][1]?.body));
+    expect(verificationBody.route).toEqual(planningFixture.options[0].modified_route);
+    expect(verificationBody.camera).toEqual(planningFixture.options[0].modified_camera);
+    expect(screen.getByText('Applied and verified suggested alternative: Privacy-first.')).toBeInTheDocument();
   });
 
   it('disables privacy option generation until a preference polygon exists', async () => {
@@ -337,6 +342,7 @@ describe('App', () => {
   });
 
   it('switches study conditions and hides visual-exposure controls in C1', async () => {
+    setFacilitatorRole();
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse(scenarioFixture));
 
     render(<App />);
@@ -345,7 +351,7 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Show Preference-Weighted Exposure' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'C1 Basic Notice' }));
 
-    expect(screen.queryByRole('button', { name: 'Compute Exposure' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Compute .*Exposure/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Show Preference-Weighted Exposure' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Generate Privacy Options' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Route file')).not.toBeInTheDocument();
@@ -353,16 +359,15 @@ describe('App', () => {
   });
 
   it('keeps participant C2 focused on route and frustum without editing, exposure, or planning controls', async () => {
+    setParticipantCondition('c2');
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse(scenarioFixture));
 
     render(<App />);
     await screen.findByText('Residential Block Roof Inspection');
 
-    await userEvent.click(screen.getByRole('button', { name: 'C2 Route + Footprint' }));
-
     expect(screen.queryByLabelText('Route file')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'New Manual Route' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Compute Exposure' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Compute .*Exposure/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Show Preference-Weighted Exposure' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Generate Privacy Options' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sensitive' })).not.toBeInTheDocument();
@@ -388,6 +393,39 @@ describe('App', () => {
     expect(screen.queryByLabelText('Route file')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'New Manual Route' })).not.toBeInTheDocument();
   });
+
+  it('locks a participant to the URL-assigned study condition', async () => {
+    setParticipantCondition('c1');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse(scenarioFixture));
+
+    render(<App />);
+    await screen.findByText('Residential Block Roof Inspection');
+
+    expect(screen.getByText('Study session')).toBeInTheDocument();
+    expect(screen.queryByText('C1 Basic Notice')).not.toBeInTheDocument();
+    expect(screen.getByText(/Interface configured for this session/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'C2 Route + Footprint' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Compute .*Exposure/ })).not.toBeInTheDocument();
+  });
+
+  it('records a final decision and confidence after exposure is computed', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse(scenarioFixture))
+      .mockResolvedValueOnce(jsonResponse(exposureFixture));
+
+    render(<App />);
+    await screen.findByText('Residential Block Roof Inspection');
+    await userEvent.click(screen.getByRole('button', { name: 'Compute Baseline Exposure' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    await userEvent.click(screen.getByRole('radio', { name: /Authorize this plan/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Decision confidence 4' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Record Decision' }));
+
+    expect(screen.getByText('Response recorded')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Decision recorded' })).toBeInTheDocument();
+  });
 });
 
 function jsonResponse(body: unknown): Response {
@@ -409,5 +447,9 @@ function metricValue(label: string): string {
 }
 
 function setFacilitatorRole() {
-  window.history.pushState({}, '', '/?role=facilitator');
+  window.history.pushState({}, '', '/?role=facilitator&ui=legacy');
+}
+
+function setParticipantCondition(condition: 'c1' | 'c2' | 'c3') {
+  window.history.pushState({}, '', `/?condition=${condition}&ui=legacy`);
 }

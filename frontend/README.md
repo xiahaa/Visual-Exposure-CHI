@@ -27,9 +27,28 @@ VITE_API_BASE_URL=https://<user-or-org>-<space-name>.hf.space
 For the recommended deployment, Vercel serves only the frontend and Hugging Face
 Spaces serves the FastAPI/Open3D backend.
 
+## Study Entry Points
+
+```text
+/setup
+  Facilitator setup and non-recording cell previews.
+
+/runner?lang=en&entry_token=<opaque-questionnaire-token>
+  Main-study runner. The backend assigns the A-D x M/S/V cell and returns a
+  completion code after required milestones are recorded.
+
+/runner?role=facilitator&preview=disclosure&profile=C&disclosure=V
+  Researcher preview. This mode does not create a study record or completion
+  code.
+```
+
+Participant URLs must not contain or rely on `profile` or `disclosure`; those
+parameters are honored only in facilitator mode.
+
 ## Tests
 
 ```powershell
 cd D:\CHI\frontend
 npm test
+npm run build
 ```

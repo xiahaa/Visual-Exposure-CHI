@@ -24,6 +24,7 @@ class RayHit:
 class RaycastArrays:
     """Vectorized first-hit arrays returned by Open3D."""
 
+    ray_indices: np.ndarray
     primitive_ids: np.ndarray
     distances: np.ndarray
     incidence: np.ndarray
@@ -107,6 +108,7 @@ class VisibilityScene:
 
         if rays.size == 0:
             return RaycastArrays(
+                ray_indices=np.empty(0, dtype=np.int64),
                 primitive_ids=np.empty(0, dtype=np.int64),
                 distances=np.empty(0, dtype=np.float32),
                 incidence=np.empty(0, dtype=np.float32),
@@ -128,6 +130,7 @@ class VisibilityScene:
         )
         if not np.any(valid):
             return RaycastArrays(
+                ray_indices=np.empty(0, dtype=np.int64),
                 primitive_ids=np.empty(0, dtype=np.int64),
                 distances=np.empty(0, dtype=np.float32),
                 incidence=np.empty(0, dtype=np.float32),
@@ -146,6 +149,10 @@ class VisibilityScene:
         )
 
         return RaycastArrays(
+            # Preserve the position of each hit in the flattened pose-by-pixel
+            # ray batch. The exposure service uses this to recover which camera
+            # pose produced the hit without issuing another raycast.
+            ray_indices=np.flatnonzero(valid).astype(np.int64, copy=False),
             primitive_ids=primitive_ids[valid],
             distances=distances[valid].astype(np.float32, copy=False),
             incidence=np.clip(incidence, 0.0, 1.0),

@@ -5,7 +5,7 @@ from shapely.geometry import Point, shape
 
 from ..camera import generate_camera_rays_batch
 from ..config import load_backend_config
-from ..geo import GeoPoint
+from ..geo import EnuPoint, GeoPoint, enu_to_geodetic
 from ..models import CompareRequest, ExposureRequest
 from ..prepared_scene import get_prepared_scene
 from ..surface_cells import SurfaceCell, build_surface_cells
@@ -94,6 +94,24 @@ def compute_exposure(request: ExposureRequest) -> dict:
         prepared_scene.primitive_to_surface_index,
         surface_cells,
         exposure_config.recognizability_d0_m,
+        exposure_config.reference_rays_per_pose
+        / (request.camera.ray_width * request.camera.ray_height),
+    )
+    pose_evidence = _build_pose_evidence(
+        poses=poses,
+        origin=origin,
+        camera=request.camera,
+        ray_indices=hits.ray_indices,
+        primitive_ids=hits.primitive_ids,
+        distances=hits.distances,
+        incidence=hits.incidence,
+        primitive_to_surface_index=prepared_scene.primitive_to_surface_index,
+        surface_cells=surface_cells,
+        recognizability_d0_m=exposure_config.recognizability_d0_m,
+        ray_density_weight=(
+            exposure_config.reference_rays_per_pose
+            / (request.camera.ray_width * request.camera.ray_height)
+        ),
     )
 
     exposure_surfaces = {"type": "FeatureCollection", "features": []}
@@ -153,6 +171,7 @@ def compute_exposure(request: ExposureRequest) -> dict:
     return {
         "exposure_surfaces": exposure_surfaces,
         "exposure_points": exposure_points,
+        "pose_evidence": pose_evidence,
         "summary": {
             "total_exposure": round(total_exposure, 4),
             "sensitive_exposure": round(sensitive_exposure, 4),
@@ -169,9 +188,134 @@ def compute_exposure(request: ExposureRequest) -> dict:
                 "max_range_m": max_range_m,
                 "recognizability_d0_m": exposure_config.recognizability_d0_m,
                 "route_sample_step_m": exposure_config.route_sample_step_m,
+                "reference_rays_per_pose": exposure_config.reference_rays_per_pose,
             },
         },
     }
+
+
+def _build_pose_evidence(
+    *,
+    poses: list,
+    origin: GeoPoint,
+    camera,
+    ray_indices: np.ndarray,
+    primitive_ids: np.ndarray,
+    distances: np.ndarray,
+    incidence: np.ndarray,
+    primitive_to_surface_index: np.ndarray,
+    surface_cells: list[SurfaceCell],
+    recognizability_d0_m: float,
+    ray_density_weight: float,
+) -> list[dict]:
+    """Build a compact exposure profile aligned with sampled route poses.
+
+    The ray batch is flattened as ``pose -> image rows -> image columns``.
+    Dividing each retained ray index by the number of pixels therefore recovers
+    the source pose. Per-pose scores reuse the exact same contribution formula
+    as the surface summary, keeping the timeline numerically interpretable.
+    """
+
+    pose_count = len(poses)
+    if pose_count == 0:
+        return []
+
+    rays_per_pose = camera.ray_width * camera.ray_height
+    surface_count = len(surface_cells)
+    sensitivities = np.array(
+        [surface.sensitivity for surface in surface_cells], dtype=np.float32
+    )
+
+    if ray_indices.size:
+        pose_indices = ray_indices // rays_per_pose
+        surface_indices = primitive_to_surface_index[primitive_ids]
+        distance_weight = np.minimum(
+            1.0, recognizability_d0_m / np.maximum(distances, 1e-6)
+        )
+        incidence_weight = np.clip(incidence, 0.0, 1.0)
+        contributions = (
+            distance_weight
+            * incidence_weight
+            * sensitivities[surface_indices]
+            * ray_density_weight
+        )
+        total_by_pose = np.bincount(
+            pose_indices, weights=contributions, minlength=pose_count
+        )
+        sensitive_by_pose = np.bincount(
+            pose_indices,
+            weights=contributions * (sensitivities[surface_indices] >= 0.8),
+            minlength=pose_count,
+        )
+
+        # Aggregate sparse pose/surface pairs. This avoids allocating a dense
+        # pose-by-surface matrix for city scenes with thousands of surfaces.
+        pair_ids = pose_indices * surface_count + surface_indices
+        unique_pairs, pair_inverse = np.unique(pair_ids, return_inverse=True)
+        pair_contributions = np.bincount(pair_inverse, weights=contributions)
+        pair_pose_indices = unique_pairs // surface_count
+        pair_surface_indices = unique_pairs % surface_count
+        visible_surface_count = np.bincount(
+            pair_pose_indices, minlength=pose_count
+        )
+    else:
+        total_by_pose = np.zeros(pose_count, dtype=np.float64)
+        sensitive_by_pose = np.zeros(pose_count, dtype=np.float64)
+        pair_contributions = np.empty(0, dtype=np.float64)
+        pair_pose_indices = np.empty(0, dtype=np.int64)
+        pair_surface_indices = np.empty(0, dtype=np.int64)
+        visible_surface_count = np.zeros(pose_count, dtype=np.int64)
+
+    cumulative_distance = np.zeros(pose_count, dtype=np.float64)
+    for index in range(1, pose_count):
+        start = poses[index - 1]
+        end = poses[index]
+        cumulative_distance[index] = cumulative_distance[index - 1] + float(
+            np.linalg.norm(end.eye - start.eye)
+        )
+    total_distance = float(cumulative_distance[-1])
+
+    evidence = []
+    for index, pose in enumerate(poses):
+        pair_start = int(np.searchsorted(pair_pose_indices, index, side="left"))
+        pair_end = int(np.searchsorted(pair_pose_indices, index, side="right"))
+        if pair_end > pair_start:
+            local_weights = pair_contributions[pair_start:pair_end]
+            local_surfaces = pair_surface_indices[pair_start:pair_end]
+            top_count = min(5, len(local_weights))
+            top_order = np.argsort(local_weights)[-top_count:][::-1]
+            top_surface_ids = [
+                surface_cells[int(local_surfaces[position])].surface_id
+                for position in top_order
+            ]
+        else:
+            top_surface_ids = []
+
+        geodetic = enu_to_geodetic(
+            EnuPoint(x=pose.x, y=pose.y, z=pose.z), origin
+        )
+        evidence.append(
+            {
+                "pose_index": index,
+                "distance_along_route_m": round(float(cumulative_distance[index]), 2),
+                "route_fraction": round(
+                    float(cumulative_distance[index] / total_distance)
+                    if total_distance > 0.0
+                    else 0.0,
+                    6,
+                ),
+                "lon": round(geodetic.lon, 7),
+                "lat": round(geodetic.lat, 7),
+                "alt": round(geodetic.alt, 2),
+                "yaw": round(float(pose.yaw), 3),
+                "gimbal_pitch_deg": round(float(camera.gimbal_pitch_deg), 3),
+                "total_exposure": round(float(total_by_pose[index]), 4),
+                "sensitive_exposure": round(float(sensitive_by_pose[index]), 4),
+                "visible_surface_count": int(visible_surface_count[index]),
+                "top_surface_ids": top_surface_ids,
+            }
+        )
+    return evidence
 
 
 def compare_exposure(request: CompareRequest) -> dict:
@@ -205,8 +349,14 @@ def _aggregate_hits(
     primitive_to_surface_index: np.ndarray,
     surface_cells: list[SurfaceCell],
     recognizability_d0_m: float,
+    ray_density_weight: float = 1.0,
 ) -> dict[str, ExposureStats]:
-    """Aggregate vectorized ray hits into per-surface stats."""
+    """Aggregate vectorized ray hits into per-surface stats.
+
+    ``ray_density_weight`` normalizes contributions to a fixed reference grid.
+    Without it, increasing ray_width/ray_height would mechanically increase the
+    reported exposure even when route, geometry, and camera optics are unchanged.
+    """
 
     surface_count = len(surface_cells)
     if primitive_ids.size == 0:
@@ -216,7 +366,12 @@ def _aggregate_hits(
     sensitivities = np.array([surface.sensitivity for surface in surface_cells], dtype=np.float32)
     distance_weight = np.minimum(1.0, recognizability_d0_m / np.maximum(distances, 1e-6))
     incidence_weight = np.clip(incidence, 0.0, 1.0)
-    exposure_weight = distance_weight * incidence_weight * sensitivities[surface_indices]
+    exposure_weight = (
+        distance_weight
+        * incidence_weight
+        * sensitivities[surface_indices]
+        * ray_density_weight
+    )
 
     exposure_sum = np.bincount(surface_indices, weights=exposure_weight, minlength=surface_count)
     visible_count = np.bincount(surface_indices, minlength=surface_count)

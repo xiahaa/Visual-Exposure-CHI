@@ -36,6 +36,12 @@
   "summary": {
     "task": "Inspect residential rooftops after maintenance work.",
     "notice": "Estimated visual exposure is computed from the planned route and camera settings."
+  },
+  "translations": {
+    "zh": {
+      "name": "住宅街区屋顶检查",
+      "task": "在维护作业完成后检查住宅建筑屋顶。",
+      "notice": "估计视觉暴露根据计划航线和相机设置计算。"
+    }
   }
 }
-

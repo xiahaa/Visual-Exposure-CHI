@@ -65,6 +65,9 @@ export const scenarioSchema = z.object({
   default_camera_profile_id: z.string(),
   default_route: z.array(routePointSchema).min(2),
   summary: z.object({ task: z.string(), notice: z.string() }),
+  translations: z.object({
+    zh: z.object({ name: z.string(), task: z.string(), notice: z.string() }).optional(),
+  }).optional(),
   buildings: featureCollectionSchema,
   semantic_layers: featureCollectionSchema,
 });
@@ -83,6 +86,7 @@ export const exposureSummarySchema = z.object({
     max_range_m: z.number(),
     recognizability_d0_m: z.number(),
     route_sample_step_m: z.number(),
+    reference_rays_per_pose: z.number().int().positive().optional(),
   }),
 });
 
@@ -98,6 +102,22 @@ export const exposureResponseSchema = z.object({
       semantic_type: z.string(),
     }),
   ),
+  pose_evidence: z.array(
+    z.object({
+      pose_index: z.number().int().gte(0),
+      distance_along_route_m: z.number().gte(0),
+      route_fraction: z.number().gte(0).lte(1),
+      lon: z.number().gte(-180).lte(180),
+      lat: z.number().gte(-90).lte(90),
+      alt: z.number(),
+      yaw: z.number(),
+      gimbal_pitch_deg: z.number(),
+      total_exposure: z.number().gte(0),
+      sensitive_exposure: z.number().gte(0),
+      visible_surface_count: z.number().int().gte(0),
+      top_surface_ids: z.array(z.string()).max(5),
+    }),
+  ).default([]),
   summary: exposureSummarySchema,
 });
 

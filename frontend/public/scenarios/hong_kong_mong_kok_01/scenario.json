@@ -44,5 +44,12 @@
   "summary": {
     "task": "Assess a high-density Hong Kong urban route using real OSM buildings and sensitive public areas.",
     "notice": "Estimated visual exposure is computed from OpenStreetMap footprints, inferred building heights, and planned camera settings."
+  },
+  "translations": {
+    "zh": {
+      "name": "香港旺角视觉暴露研究",
+      "task": "使用真实 OSM 建筑和敏感公共区域，评估香港高密度城区中的无人机航线。",
+      "notice": "估计视觉暴露基于 OpenStreetMap 建筑轮廓、推断建筑高度和计划相机设置计算。"
+    }
   }
 }
