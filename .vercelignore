@@ -1,0 +1,12 @@
+.git/
+.pytest_cache/
+.venv/
+backend/tests/
+frontend/node_modules/
+frontend/public/gs-local/
+frontend/.chrome-qa*/
+frontend/*-matrixcity-check.png
+**/__pycache__/
+*.log
+*.jsonl
+*.sqlite3*
