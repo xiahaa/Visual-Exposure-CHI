@@ -3,6 +3,7 @@
 .venv/
 backend/tests/
 frontend/node_modules/
+frontend/dist/
 frontend/public/gs-local/
 frontend/.chrome-qa*/
 frontend/*-matrixcity-check.png
