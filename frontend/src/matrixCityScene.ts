@@ -45,6 +45,16 @@ export function enuToScene(point: EnuPoint): ScenePoint {
   return [east, up, -north];
 }
 
+/** Converts Three.js X/Y/Z metres back into MatrixCity East/North/Up. */
+export function sceneToEnu(point: ScenePoint): EnuPoint {
+  const origin = MATRIX_CITY_STUDY_SCENE.asset_origin_enu_m;
+  return [
+    point[0] + origin[0],
+    -point[2] + origin[1],
+    point[1] + origin[2],
+  ];
+}
+
 /** Direction conversion excludes translation and preserves metric length. */
 export function enuDirectionToScene(direction: EnuPoint): ScenePoint {
   return [direction[0], direction[2], -direction[1]];

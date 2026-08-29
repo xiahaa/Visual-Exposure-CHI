@@ -1,8 +1,9 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -58,11 +59,59 @@ class StudyServiceConfig(BaseModel):
         return self
 
 
+class GaussianAssetProfileConfig(BaseModel):
+    """One browser-rendered MatrixCity delivery profile.
+
+    The backend only publishes immutable OSS locations and client-side loading
+    limits. Gaussian decoding and rendering remain in the participant browser.
+    """
+
+    id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{1,31}$")
+    label: str = Field(min_length=1, max_length=80)
+    description: str = Field(min_length=1, max_length=240)
+    manifest_url: str
+    format: Literal["tiled", "paged"]
+    fallback_profile_id: str | None = None
+    max_concurrent_requests: int = Field(default=2, ge=1, le=4)
+    max_resident_pages: int = Field(default=8, ge=1, le=16)
+    load_timeout_ms: int = Field(default=90000, ge=5000, le=180000)
+
+    @field_validator("manifest_url")
+    @classmethod
+    def validate_manifest_url(cls, value: str) -> str:
+        if not value.startswith("https://"):
+            raise ValueError("Gaussian asset manifests must use HTTPS")
+        return value
+
+
+class GaussianAssetCatalogConfig(BaseModel):
+    """Validated asset profiles exposed to Vercel clients."""
+
+    default_profile_id: str
+    profiles: list[GaussianAssetProfileConfig] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_profiles(self) -> "GaussianAssetCatalogConfig":
+        profile_ids = [profile.id for profile in self.profiles]
+        if len(set(profile_ids)) != len(profile_ids):
+            raise ValueError("Gaussian asset profile IDs must be unique")
+        if self.default_profile_id not in profile_ids:
+            raise ValueError("Default Gaussian asset profile is not configured")
+        for profile in self.profiles:
+            fallback_id = profile.fallback_profile_id
+            if fallback_id is not None and fallback_id not in profile_ids:
+                raise ValueError(f"Unknown Gaussian fallback profile: {fallback_id}")
+            if fallback_id == profile.id:
+                raise ValueError("A Gaussian asset profile cannot fall back to itself")
+        return self
+
+
 class BackendConfig(BaseModel):
     """Root backend configuration loaded from YAML."""
 
     exposure: ExposureEngineConfig
     camera_profiles: dict
+    gaussian_assets: GaussianAssetCatalogConfig
     study: StudyServiceConfig
 
 

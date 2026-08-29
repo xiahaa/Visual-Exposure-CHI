@@ -8,6 +8,7 @@ export type StudySession = {
   sessionId: string;
   scenarioId: string;
   cameraProfileId: string;
+  gaussianProfileId: string;
 };
 
 const CONDITION_ALIASES: Record<string, StudyCondition> = {
@@ -30,6 +31,7 @@ export function readStudySession(search = window.location.search): StudySession 
     sessionId: cleanIdentifier(params.get('session_id')) || `local-${Date.now()}`,
     scenarioId: cleanIdentifier(params.get('scenario')) || 'hong_kong_mong_kok_01',
     cameraProfileId: cleanIdentifier(params.get('camera')) || 'inspection_balanced',
+    gaussianProfileId: cleanIdentifier(params.get('gs')) || 'standard_v2',
   };
 }
 
@@ -45,6 +47,7 @@ export function buildStudyUrl(
   url.searchParams.set('session_id', session.sessionId);
   url.searchParams.set('scenario', session.scenarioId);
   url.searchParams.set('camera', session.cameraProfileId);
+  url.searchParams.set('gs', session.gaussianProfileId);
   return url.toString();
 }
 

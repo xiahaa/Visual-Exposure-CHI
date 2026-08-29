@@ -42,6 +42,30 @@ camera_profiles:
         min_depth_m: 5.0
         max_depth_m: 140.0
 
+gaussian_assets:
+  # Keep the established 2.4-million-splat scene as the formal-study default
+  # until the paged high-quality profile has been accepted on target devices.
+  default_profile_id: standard_v2
+  profiles:
+    - id: standard_v2
+      label: Standard study scene
+      description: Existing progressive 3x3 MatrixCity scene used by the current pilot.
+      manifest_url: https://chi-privacy-study.oss-cn-beijing.aliyuncs.com/vep/matrixcity/v2/matrixcity-neighborhood-study-v2.json
+      format: tiled
+      fallback_profile_id: null
+      max_concurrent_requests: 2
+      max_resident_pages: 9
+      load_timeout_ms: 90000
+    - id: paged_v3
+      label: High-quality paged scene
+      description: SH3 MatrixCity pages streamed around the active camera corridor.
+      manifest_url: https://chi-privacy-study.oss-cn-beijing.aliyuncs.com/vep/matrixcity/v3/renderer_manifest.json
+      format: paged
+      fallback_profile_id: standard_v2
+      max_concurrent_requests: 2
+      max_resident_pages: 6
+      load_timeout_ms: 90000
+
 study:
   database_path: data/study_sessions.sqlite3
   completion_code_prefix: VEP

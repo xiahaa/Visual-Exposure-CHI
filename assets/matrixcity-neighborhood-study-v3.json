@@ -1,0 +1,104 @@
+{
+  "format": "matrixcity-spark-tile-manifest-v1",
+  "version": 3,
+  "coordinate_frame": "matrixcity_big_city_local_enu_m",
+  "study_origin_enu_m": [200.0, 3700.0, -4.334944725],
+  "total_splat_count": 2400000,
+  "total_asset_bytes": 73240618,
+  "context_concurrency": 2,
+  "tiles": [
+    {
+      "id": "block3_tile19",
+      "url": "matrixcity-tile19-study-v1.spz",
+      "preview_url": "block3_tile19-preview.spz",
+      "role": "primary",
+      "origin_enu_m": [200.0, 3700.0, -4.334944725],
+      "bounds_enu_m": [0.0, 3500.0, 400.0, 3900.0],
+      "splat_count": 1000000,
+      "byte_length": 25889214,
+      "preview_splat_count": 400000,
+      "preview_byte_length": 10784296,
+      "load_order": 0
+    },
+    {
+      "id": "block3_tile13",
+      "url": "matrixcity-block3-tile13-context-v2.spz",
+      "role": "context",
+      "origin_enu_m": [200.0, 3300.0, -0.029362805],
+      "bounds_enu_m": [0.0, 3100.0, 400.0, 3500.0],
+      "splat_count": 250000,
+      "byte_length": 6437100,
+      "load_order": 1
+    },
+    {
+      "id": "block3_tile18",
+      "url": "matrixcity-block3-tile18-context-v2.spz",
+      "role": "context",
+      "origin_enu_m": [-200.0, 3700.0, -5.2582407],
+      "bounds_enu_m": [-400.0, 3500.0, 0.0, 3900.0],
+      "splat_count": 250000,
+      "byte_length": 6755215,
+      "load_order": 2
+    },
+    {
+      "id": "block3_tile20",
+      "url": "matrixcity-block3-tile20-context-v2.spz",
+      "role": "context",
+      "origin_enu_m": [600.0, 3700.0, -9.423377037],
+      "bounds_enu_m": [400.0, 3500.0, 800.0, 3900.0],
+      "splat_count": 250000,
+      "byte_length": 6628952,
+      "load_order": 3
+    },
+    {
+      "id": "block3_tile25",
+      "url": "matrixcity-block3-tile25-context-v2.spz",
+      "role": "context",
+      "origin_enu_m": [200.0, 3950.0, -8.96695137],
+      "bounds_enu_m": [0.0, 3900.0, 400.0, 4000.0],
+      "splat_count": 250000,
+      "byte_length": 6342829,
+      "load_order": 4
+    },
+    {
+      "id": "block3_tile12",
+      "url": "matrixcity-block3-tile12-context-v2.spz",
+      "role": "context",
+      "origin_enu_m": [-200.0, 3300.0, -5.286302567],
+      "bounds_enu_m": [-400.0, 3100.0, 0.0, 3500.0],
+      "splat_count": 100000,
+      "byte_length": 2688869,
+      "load_order": 5
+    },
+    {
+      "id": "block3_tile26",
+      "url": "matrixcity-block3-tile26-context-v2.spz",
+      "role": "context",
+      "origin_enu_m": [600.0, 3950.0, -11.391577721],
+      "bounds_enu_m": [400.0, 3900.0, 800.0, 4000.0],
+      "splat_count": 100000,
+      "byte_length": 2434102,
+      "load_order": 6
+    },
+    {
+      "id": "block3_tile14",
+      "url": "matrixcity-block3-tile14-context-v2.spz",
+      "role": "context",
+      "origin_enu_m": [600.0, 3300.0, 0.047860146],
+      "bounds_enu_m": [400.0, 3100.0, 800.0, 3500.0],
+      "splat_count": 100000,
+      "byte_length": 2433950,
+      "load_order": 7
+    },
+    {
+      "id": "block3_tile24",
+      "url": "matrixcity-block3-tile24-context-v2.spz",
+      "role": "context",
+      "origin_enu_m": [-200.0, 3950.0, -8.511428833],
+      "bounds_enu_m": [-400.0, 3900.0, 0.0, 4000.0],
+      "splat_count": 100000,
+      "byte_length": 2846091,
+      "load_order": 8
+    }
+  ]
+}

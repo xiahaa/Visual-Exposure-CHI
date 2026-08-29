@@ -3431,6 +3431,16 @@ h1 {
   background: #162427;
 }
 
+.setup-gs-caution {
+  margin: 10px 0 0;
+  border-left: 3px solid #d99d3e;
+  padding: 8px 11px;
+  color: #5f4c28;
+  background: #fff8e8;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .warmup-gs-scene .event-scene-host,
 .warmup-gs-scene .event-scene-canvas {
   width: 100%;
@@ -4224,11 +4234,14 @@ h1 {
 }
 .vep-asset-status i { width: 6px; height: 6px; border-radius: 50%; background: #718585; }
 .vep-asset-status.loading i,
+.vep-asset-status.refining i,
 .vep-asset-status.streaming i { background: #e6af50; box-shadow: 0 0 0 3px rgba(230, 175, 80, 0.13); }
 .vep-asset-status.ready { color: #9fd8cd; }
 .vep-asset-status.ready i { background: #4bb7a8; box-shadow: 0 0 0 3px rgba(75, 183, 168, 0.13); }
 .vep-asset-status.partial { color: #efcb83; }
 .vep-asset-status.partial i { background: #d99d3e; box-shadow: 0 0 0 3px rgba(217, 157, 62, 0.13); }
+.vep-asset-status.fallback { color: #efcb83; }
+.vep-asset-status.fallback i { background: #d99d3e; box-shadow: 0 0 0 3px rgba(217, 157, 62, 0.13); }
 .vep-asset-status.error i { background: #db775f; }
 
 .vep-scene-grid {

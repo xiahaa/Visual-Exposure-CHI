@@ -5,6 +5,8 @@ import { EventMediaScene } from './EventMediaScene';
 import { EVENT_PROFILES, type EventProfile } from './eventProfiles';
 import { createDefaultMatrixCityFlightConfig } from './matrixCityFlightConfig';
 import { WARMUP_RESULT_STORAGE_KEY } from './warmupStorage';
+import type { GaussianAssetSelection } from './gaussianAssetCatalog';
+import { useGaussianAssetSelection } from './useGaussianAssetSelection';
 
 export { WARMUP_RESULT_STORAGE_KEY } from './warmupStorage';
 
@@ -43,11 +45,7 @@ export function WarmupExperience() {
   const [confidence, setConfidence] = useState(3);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const audioRef = useRef<DroneAudio | null>(null);
-  const gaussianAssetUrl = useMemo(() => {
-    const configured = import.meta.env.VITE_MATRIXCITY_GS_MANIFEST_URL
-      || import.meta.env.VITE_MATRIXCITY_GS_URL;
-    return typeof configured === 'string' && configured.trim() ? configured.trim() : undefined;
-  }, []);
+  const gaussianAssetSelection = useGaussianAssetSelection(session.gaussianProfileId);
 
   const sample = useMemo(() => sampleTimeline(time), [time]);
   const predictionError = Math.abs(prediction - EXPOSURE_PEAK_TIME);
@@ -58,6 +56,7 @@ export function WarmupExperience() {
     sessionId: session.sessionId,
     scenarioId: session.scenarioId,
     cameraProfileId: session.cameraProfileId,
+    gaussianProfileId: session.gaussianProfileId,
   }), [session]);
 
   useEffect(() => {
@@ -237,8 +236,8 @@ export function WarmupExperience() {
       </header>
 
       <section className={revealVisible ? 'warmup-views reveal' : 'warmup-views'}>
-        <FlightContextView sample={sample} reveal={revealVisible} language={language} gaussianAssetUrl={gaussianAssetUrl} />
-        {revealVisible && <CameraView sample={sample} language={language} gaussianAssetUrl={gaussianAssetUrl} />}
+        <FlightContextView sample={sample} reveal={revealVisible} language={language} gaussianAssetSelection={gaussianAssetSelection} />
+        {revealVisible && <CameraView sample={sample} language={language} gaussianAssetSelection={gaussianAssetSelection} />}
       </section>
 
       <section className="warmup-console">
@@ -314,12 +313,12 @@ function FlightContextView({
   sample,
   reveal,
   language,
-  gaussianAssetUrl,
+  gaussianAssetSelection,
 }: {
   sample: TimelineSample;
   reveal: boolean;
   language: StudyLanguage;
-  gaussianAssetUrl?: string;
+  gaussianAssetSelection?: GaussianAssetSelection;
 }) {
   return (
     <article className="observer-view" aria-label={copy(language, 'External flight context', '飞行外部情境')}>
@@ -329,7 +328,7 @@ function FlightContextView({
           profile={WARMUP_EVENT_PROFILE}
           time={sample.time}
           reveal={reveal}
-          gaussianAssetUrl={gaussianAssetUrl}
+          gaussianAssetSelection={gaussianAssetSelection}
           flightConfig={WARMUP_FLIGHT_CONFIG}
         />
       </div>
@@ -349,11 +348,11 @@ function FlightContextView({
 function CameraView({
   sample,
   language,
-  gaussianAssetUrl,
+  gaussianAssetSelection,
 }: {
   sample: TimelineSample;
   language: StudyLanguage;
-  gaussianAssetUrl?: string;
+  gaussianAssetSelection?: GaussianAssetSelection;
 }) {
   const targetVisible = sample.exposure > 0.2;
   return (
@@ -364,7 +363,7 @@ function CameraView({
           profile={WARMUP_EVENT_PROFILE}
           time={sample.time}
           reveal
-          gaussianAssetUrl={gaussianAssetUrl}
+          gaussianAssetSelection={gaussianAssetSelection}
           flightConfig={WARMUP_FLIGHT_CONFIG}
         />
       </div>

@@ -49,6 +49,8 @@ import {
   type AssignedStudySession,
 } from './studyApi';
 import type { StudyLanguage } from './types';
+import type { GaussianAssetSelection } from './gaussianAssetCatalog';
+import { useGaussianAssetSelection } from './useGaussianAssetSelection';
 
 type RunnerPhase = 'ready' | 'attention' | 'initial_media' | 'disclosure' | 'complete';
 type VepTab = 'overview' | 'visual' | 'data' | 'recourse';
@@ -120,11 +122,8 @@ export function EventStudyRunner() {
     showFrustum: vepShowFrustum,
     showClarity: vepShowClarity,
   }), [vepFollowUav, vepShowClarity, vepShowFrustum]);
-  const gaussianAssetUrl = useMemo(() => {
-    const configured = import.meta.env.VITE_MATRIXCITY_GS_MANIFEST_URL
-      || import.meta.env.VITE_MATRIXCITY_GS_URL;
-    return typeof configured === 'string' && configured.trim() ? configured.trim() : undefined;
-  }, []);
+  const requestedGaussianProfileId = params.get('gs') || 'standard_v2';
+  const gaussianAssetSelection = useGaussianAssetSelection(requestedGaussianProfileId);
 
   useEffect(() => {
     document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
@@ -217,9 +216,26 @@ export function EventStudyRunner() {
     const token = studyTokenRef.current;
     if (!token || facilitatorMode) return;
     await appendStudyEvents(token, [
-      createStudyEvent(eventSequenceRef.current++, eventType, eventPhase, payload),
+      createStudyEvent(eventSequenceRef.current++, eventType, eventPhase, {
+        gaussian_profile_requested: requestedGaussianProfileId,
+        gaussian_profile_active: gaussianStatus === 'fallback'
+          ? gaussianAssetSelection?.fallbackProfile?.id
+          : gaussianAssetSelection?.profile.id,
+        gaussian_asset_status: gaussianStatus,
+        ...payload,
+      }),
     ]);
-  }, [facilitatorMode]);
+  }, [
+    facilitatorMode,
+    gaussianAssetSelection,
+    gaussianStatus,
+    requestedGaussianProfileId,
+  ]);
+
+  useEffect(() => {
+    if (gaussianStatus !== 'fallback') return;
+    void recordEvent('gaussian_asset_fallback_activated', phase).catch(() => undefined);
+  }, [gaussianStatus, phase, recordEvent]);
 
   useEffect(() => {
     const token = studyTokenRef.current;
@@ -265,10 +281,20 @@ export function EventStudyRunner() {
     try {
       // Repeat the milestone event names in one final batch. This closes any
       // transition race if a browser loses focus while media is advancing.
+      const gaussianContext = {
+        gaussian_profile_requested: requestedGaussianProfileId,
+        gaussian_profile_active: gaussianStatus === 'fallback'
+          ? gaussianAssetSelection?.fallbackProfile?.id
+          : gaussianAssetSelection?.profile.id,
+        gaussian_asset_status: gaussianStatus,
+      };
       await appendStudyEvents(token, [
-        createStudyEvent(eventSequenceRef.current++, 'initial_media_completed', 'initial_media'),
-        createStudyEvent(eventSequenceRef.current++, 'disclosure_view_entered', 'disclosure'),
-        createStudyEvent(eventSequenceRef.current++, 'media_review_completed', 'disclosure', { condition }),
+        createStudyEvent(eventSequenceRef.current++, 'initial_media_completed', 'initial_media', gaussianContext),
+        createStudyEvent(eventSequenceRef.current++, 'disclosure_view_entered', 'disclosure', gaussianContext),
+        createStudyEvent(eventSequenceRef.current++, 'media_review_completed', 'disclosure', {
+          ...gaussianContext,
+          condition,
+        }),
       ]);
       const completed = await completeStudy(token);
       setCompletionCode(completed.completion_code);
@@ -278,7 +304,13 @@ export function EventStudyRunner() {
     } finally {
       setSubmitting(false);
     }
-  }, [condition, facilitatorMode]);
+  }, [
+    condition,
+    facilitatorMode,
+    gaussianAssetSelection,
+    gaussianStatus,
+    requestedGaussianProfileId,
+  ]);
 
   if (!facilitatorMode && !assignment) {
     return (
@@ -365,8 +397,8 @@ export function EventStudyRunner() {
             </button>
           </div>
           <div className="initial-dual-grid">
-            <ScenePanel index="01" mode="external" profile={profile} time={time} reveal={false} language={language} gaussianAssetUrl={gaussianAssetUrl} flightConfig={flightConfiguration.config} />
-            <ScenePanel index="02" mode="resident" profile={profile} time={time} reveal={false} language={language} gaussianAssetUrl={gaussianAssetUrl} flightConfig={flightConfiguration.config} />
+            <ScenePanel index="01" mode="external" profile={profile} time={time} reveal={false} language={language} gaussianAssetSelection={gaussianAssetSelection} flightConfig={flightConfiguration.config} />
+            <ScenePanel index="02" mode="resident" profile={profile} time={time} reveal={false} language={language} gaussianAssetSelection={gaussianAssetSelection} flightConfig={flightConfiguration.config} />
           </div>
           <div className="locked-progress" aria-label={text(language, 'Playback progress', '播放进度')}>
             <i style={{ width: `${(time / EVENT_DURATION_SECONDS) * 100}%` }} />
@@ -410,7 +442,7 @@ export function EventStudyRunner() {
               time={time}
               interaction={vepInteraction}
               resetViewNonce={vepResetViewNonce}
-              gaussianAssetUrl={gaussianAssetUrl}
+              gaussianAssetSelection={gaussianAssetSelection}
               gaussianStatus={gaussianStatus}
               flightConfig={flightConfiguration.config}
               customFlightConfig={flightConfiguration.custom}
@@ -439,9 +471,9 @@ export function EventStudyRunner() {
             />
           ) : (
             <div className="reveal-triple-grid standard-disclosure-grid">
-              <ScenePanel index="01" mode="external" profile={profile} time={time} reveal={false} language={language} compact gaussianAssetUrl={gaussianAssetUrl} flightConfig={flightConfiguration.config} />
-              <ScenePanel index="02" mode="resident" profile={profile} time={time} reveal={false} language={language} compact gaussianAssetUrl={gaussianAssetUrl} flightConfig={flightConfiguration.config} />
-              <ScenePanel index="03" mode="camera" profile={profile} time={time} reveal={false} language={language} compact gaussianAssetUrl={gaussianAssetUrl} flightConfig={flightConfiguration.config} />
+              <ScenePanel index="01" mode="external" profile={profile} time={time} reveal={false} language={language} compact gaussianAssetSelection={gaussianAssetSelection} flightConfig={flightConfiguration.config} />
+              <ScenePanel index="02" mode="resident" profile={profile} time={time} reveal={false} language={language} compact gaussianAssetSelection={gaussianAssetSelection} flightConfig={flightConfiguration.config} />
+              <ScenePanel index="03" mode="camera" profile={profile} time={time} reveal={false} language={language} compact gaussianAssetSelection={gaussianAssetSelection} flightConfig={flightConfiguration.config} />
             </div>
           )}
           <RevealTimeline
@@ -524,7 +556,7 @@ function VepEvidenceStage({
   time,
   interaction,
   resetViewNonce,
-  gaussianAssetUrl,
+  gaussianAssetSelection,
   gaussianStatus,
   flightConfig,
   customFlightConfig,
@@ -540,7 +572,7 @@ function VepEvidenceStage({
   time: number;
   interaction: EventSceneInteraction;
   resetViewNonce: number;
-  gaussianAssetUrl?: string;
+  gaussianAssetSelection?: GaussianAssetSelection;
   gaussianStatus: GaussianAssetStatus;
   flightConfig: MatrixCityFlightConfig;
   customFlightConfig: boolean;
@@ -554,9 +586,11 @@ function VepEvidenceStage({
   const assetLabels: Record<GaussianAssetStatus, [string, string]> = {
     procedural: ['Procedural study scene', '程序化研究场景'],
     loading: ['Loading MatrixCity 3DGS', '正在加载 MatrixCity 3DGS'],
+    refining: ['Preview ready · loading detail', '预览已就绪 · 正在加载细节'],
     streaming: ['Loading surrounding tiles', '正在加载周边场景块'],
     ready: ['MatrixCity 3DGS ready', 'MatrixCity 3DGS 已就绪'],
     partial: ['Partial 3DGS context', '部分 3DGS 场景已加载'],
+    fallback: ['Standard 3DGS fallback', '已回退至标准 3DGS 场景'],
     error: ['Procedural fallback', '已回退至程序化场景'],
   };
   return (
@@ -635,7 +669,7 @@ function VepEvidenceStage({
           compact
           interaction={interaction}
           resetViewNonce={resetViewNonce}
-          gaussianAssetUrl={gaussianAssetUrl}
+          gaussianAssetSelection={gaussianAssetSelection}
           onGaussianStatusChange={onGaussianStatusChange}
           flightConfig={flightConfig}
         />
@@ -647,7 +681,7 @@ function VepEvidenceStage({
           reveal
           language={language}
           compact
-          gaussianAssetUrl={gaussianAssetUrl}
+          gaussianAssetSelection={gaussianAssetSelection}
           flightConfig={flightConfig}
         />
       </div>
@@ -682,7 +716,7 @@ function ScenePanel({
   compact = false,
   interaction,
   resetViewNonce,
-  gaussianAssetUrl,
+  gaussianAssetSelection,
   onGaussianStatusChange,
   flightConfig,
 }: {
@@ -695,7 +729,7 @@ function ScenePanel({
   compact?: boolean;
   interaction?: EventSceneInteraction;
   resetViewNonce?: number;
-  gaussianAssetUrl?: string;
+  gaussianAssetSelection?: GaussianAssetSelection;
   onGaussianStatusChange?: (status: GaussianAssetStatus) => void;
   flightConfig: MatrixCityFlightConfig;
 }) {
@@ -713,7 +747,7 @@ function ScenePanel({
         reveal={reveal}
         interaction={interaction}
         resetViewNonce={resetViewNonce}
-        gaussianAssetUrl={gaussianAssetUrl}
+        gaussianAssetSelection={gaussianAssetSelection}
         onGaussianStatusChange={onGaussianStatusChange}
         flightConfig={flightConfig}
       />

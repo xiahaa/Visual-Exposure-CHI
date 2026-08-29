@@ -3,7 +3,18 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { EventProfile } from './eventProfiles';
 import { sampleEventPose, TARGET_BALCONY } from './eventProfiles';
-import { resolveGaussianAssetSource, type GaussianTileSource } from './gaussianAssets';
+import {
+  resolveGaussianAssetSource,
+  selectGaussianPagesForView,
+  type GaussianPageSource,
+  type GaussianPagedAssetSource,
+  type GaussianTileSource,
+  type GaussianTiledAssetSource,
+} from './gaussianAssets';
+import type {
+  GaussianAssetProfile,
+  GaussianAssetSelection,
+} from './gaussianAssetCatalog';
 import {
   createDefaultMatrixCityFlightConfig,
   verticalFovDegrees,
@@ -15,6 +26,7 @@ import {
   MATRIX_CITY_FACADE_NORMAL,
   MATRIX_CITY_RESIDENT_FEET,
   MATRIX_CITY_STUDY_SCENE,
+  sceneToEnu,
 } from './matrixCityScene';
 
 export type EventSceneMode = 'external' | 'resident' | 'camera';
@@ -35,9 +47,11 @@ export type EventSceneInteraction = {
 export type GaussianAssetStatus =
   | 'procedural'
   | 'loading'
+  | 'refining'
   | 'streaming'
   | 'ready'
   | 'partial'
+  | 'fallback'
   | 'error';
 
 // The procedural source mesh spans roughly 12.2 scene meters from blade tip
@@ -61,6 +75,7 @@ type ClaritySurface = {
 
 type GaussianEnvironmentResource = {
   loadContext: () => Promise<void>;
+  updateView: (camera: THREE.Vector3, target: THREE.Vector3) => void;
   dispose: () => void;
 };
 
@@ -72,6 +87,7 @@ export function EventMediaScene({
   interaction = DEFAULT_INTERACTION,
   resetViewNonce = 0,
   gaussianAssetUrl,
+  gaussianAssetSelection,
   onGaussianStatusChange,
   flightConfig,
 }: {
@@ -82,6 +98,7 @@ export function EventMediaScene({
   interaction?: EventSceneInteraction;
   resetViewNonce?: number;
   gaussianAssetUrl?: string;
+  gaussianAssetSelection?: GaussianAssetSelection;
   onGaussianStatusChange?: (status: GaussianAssetStatus) => void;
   flightConfig?: MatrixCityFlightConfig;
 }) {
@@ -104,6 +121,7 @@ export function EventMediaScene({
         profile,
         interaction.enabled,
         gaussianAssetUrl,
+        gaussianAssetSelection,
         onGaussianStatusChange,
         resolvedFlightConfig,
       );
@@ -119,6 +137,7 @@ export function EventMediaScene({
     };
   }, [
     gaussianAssetUrl,
+    gaussianAssetSelection,
     interaction.enabled,
     mode,
     onGaussianStatusChange,
@@ -148,11 +167,13 @@ function createSceneRuntime(
   profile: EventProfile,
   interactive: boolean,
   gaussianAssetUrl?: string,
+  gaussianAssetSelection?: GaussianAssetSelection,
   onGaussianStatusChange?: (status: GaussianAssetStatus) => void,
   flightConfig: MatrixCityFlightConfig = createDefaultMatrixCityFlightConfig(profile.trajectoryId),
 ): SceneRuntime {
+  const configuredGaussianUrl = gaussianAssetSelection?.profile.manifest_url ?? gaussianAssetUrl;
   const renderer = new THREE.WebGLRenderer({
-    antialias: !gaussianAssetUrl,
+    antialias: !configuredGaussianUrl,
     powerPreference: 'high-performance',
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
@@ -173,7 +194,7 @@ function createSceneRuntime(
   // direct atmospheric colors so every pixel remains inspectable.
   scene.fog = null;
   addLighting(scene);
-  const matrixCityMode = Boolean(gaussianAssetUrl);
+  const matrixCityMode = Boolean(configuredGaussianUrl);
   const claritySurfaces = matrixCityMode
     ? addMatrixCityClaritySurfaces(scene, interactive && mode === 'external')
     : addEnvironment(scene, interactive && mode === 'external');
@@ -224,12 +245,13 @@ function createSceneRuntime(
   let disposed = false;
   let gaussianResource: GaussianEnvironmentResource | null = null;
 
-  if (gaussianAssetUrl) {
+  if (configuredGaussianUrl) {
     onGaussianStatusChange?.('loading');
-    void loadGaussianEnvironment(
+    void loadGaussianEnvironmentWithFallback(
       scene,
       renderer,
-      gaussianAssetUrl,
+      configuredGaussianUrl,
+      gaussianAssetSelection,
       onGaussianStatusChange,
     )
       .then((resource) => {
@@ -238,6 +260,12 @@ function createSceneRuntime(
           return;
         }
         gaussianResource = resource;
+        const initialGaussianTarget = mode === 'external'
+          ? controls.target
+          : mode === 'resident'
+            ? dronePosition
+            : cameraTarget;
+        gaussianResource.updateView(camera.position, initialGaussianTarget);
         if (mode === 'external' && interactive && !latestInteraction.followUav) {
           void gaussianResource.loadContext();
         }
@@ -374,6 +402,12 @@ function createSceneRuntime(
       );
     }
 
+    const gaussianTarget = mode === 'external'
+      ? (controls.enabled ? controls.target : externalTarget)
+      : mode === 'resident'
+        ? dronePosition
+        : cameraTarget;
+    gaussianResource?.updateView(camera.position, gaussianTarget);
     renderer.render(scene, camera);
   };
 
@@ -411,9 +445,12 @@ function createSceneRuntime(
   observer.observe(host);
   resize();
 
-  if (interactive || gaussianAssetUrl) {
+  if (interactive || configuredGaussianUrl) {
     renderer.setAnimationLoop(() => {
-      if (controls.enabled) controls.update();
+      if (controls.enabled) {
+        controls.update();
+        gaussianResource?.updateView(camera.position, controls.target);
+      }
       renderer.render(scene, camera);
     });
   }
@@ -646,17 +683,65 @@ function smoothstepNumber(edge0: number, edge1: number, value: number) {
   return normalized * normalized * (3 - 2 * normalized);
 }
 
-async function loadGaussianEnvironment(
+async function loadGaussianEnvironmentWithFallback(
   scene: THREE.Scene,
   renderer: THREE.WebGLRenderer,
   url: string,
+  selection?: GaussianAssetSelection,
+  onStatus?: (status: GaussianAssetStatus) => void,
+): Promise<GaussianEnvironmentResource> {
+  try {
+    return await loadGaussianEnvironmentForProfile(
+      scene,
+      renderer,
+      url,
+      selection?.profile,
+      onStatus,
+    );
+  } catch (primaryError) {
+    const fallback = selection?.fallbackProfile;
+    if (!fallback || fallback.manifest_url === url) throw primaryError;
+    onStatus?.('fallback');
+    const resource = await loadGaussianEnvironmentForProfile(
+      scene,
+      renderer,
+      fallback.manifest_url,
+      fallback,
+      () => undefined,
+    );
+    onStatus?.('fallback');
+    return resource;
+  }
+}
+
+async function loadGaussianEnvironmentForProfile(
+  scene: THREE.Scene,
+  renderer: THREE.WebGLRenderer,
+  url: string,
+  profile?: GaussianAssetProfile,
+  onStatus?: (status: GaussianAssetStatus) => void,
+): Promise<GaussianEnvironmentResource> {
+  const source = await resolveGaussianAssetSource(url);
+  if (profile && profile.format !== source.kind) {
+    throw new Error(`Gaussian profile ${profile.id} expected ${profile.format}, received ${source.kind}`);
+  }
+  if (source.kind === 'paged') {
+    return loadPagedGaussianEnvironment(scene, renderer, source, profile, onStatus);
+  }
+  return loadTiledGaussianEnvironment(scene, renderer, source, onStatus);
+}
+
+async function loadTiledGaussianEnvironment(
+  scene: THREE.Scene,
+  renderer: THREE.WebGLRenderer,
+  source: GaussianTiledAssetSource,
   onStatus?: (status: GaussianAssetStatus) => void,
 ): Promise<GaussianEnvironmentResource> {
   const { SparkRenderer, SplatMesh } = await import('@sparkjsdev/spark');
-  const source = await resolveGaussianAssetSource(url);
   const spark = new SparkRenderer({ renderer });
   scene.add(spark);
-  const loadedSplats: Array<{ dispose?: () => void }> = [];
+  type SplatHandle = InstanceType<typeof SplatMesh>;
+  const loadedSplats = new Set<SplatHandle>();
   const primary = source.tiles.find((tile) => tile.role === 'primary');
   if (!primary) throw new Error('Gaussian asset source has no primary tile');
   const context = source.tiles.filter((tile) => tile.role === 'context');
@@ -668,16 +753,37 @@ async function loadGaussianEnvironment(
   );
   let disposed = false;
   let contextPromise: Promise<void> | null = null;
+  let primaryRefinementPromise: Promise<void> | null = null;
+  let primaryRefining = false;
+  let contextLoading = false;
+  let failures = 0;
 
-  const addTile = async (tile: GaussianTileSource) => {
+  const publishStatus = () => {
     if (disposed) return;
+    if (contextLoading) {
+      onStatus?.('streaming');
+    } else if (primaryRefining) {
+      onStatus?.('refining');
+    } else {
+      onStatus?.(failures > 0 ? 'partial' : 'ready');
+    }
+  };
+
+  const removeSplat = (splat: SplatHandle) => {
+    loadedSplats.delete(splat);
+    scene.remove(splat);
+    splat.dispose?.();
+  };
+
+  const addTile = async (tile: GaussianTileSource, assetUrl = tile.resolvedUrl) => {
+    if (disposed) throw new Error('Gaussian environment has been disposed');
     // Every exported tile stores ENU coordinates relative to its own origin.
     // Applying the origin delta after the ENU-to-Three rotation keeps all nine
     // independently compressed files aligned in one metric study scene.
     const originOffset = source.manifestUrl
       ? new THREE.Vector3(...enuToScene(tile.origin_enu_m))
       : new THREE.Vector3();
-    const splat = new SplatMesh({ url: tile.resolvedUrl });
+    const splat = new SplatMesh({ url: assetUrl });
     splat.rotation.x = -Math.PI / 2;
     splat.scale.setScalar(scale);
     splat.position.copy(originOffset.multiplyScalar(scale).add(baseOffset));
@@ -686,14 +792,13 @@ async function loadGaussianEnvironment(
     try {
       await splat.initialized;
       if (disposed) {
-        scene.remove(splat);
-        splat.dispose?.();
-        return;
+        throw new Error('Gaussian environment was disposed while loading');
       }
       // The exporter already enforces a bounded splat budget. Spark Tiny LoD
       // would merge facade detail again, so each tile keeps its full SH3 data.
       splat.maxSh = 3;
-      loadedSplats.push(splat);
+      loadedSplats.add(splat);
+      return splat;
     } catch (error) {
       scene.remove(splat);
       splat.dispose?.();
@@ -702,43 +807,298 @@ async function loadGaussianEnvironment(
   };
 
   try {
-    await addTile(primary);
+    if (primary.resolvedPreviewUrl) {
+      let previewSplat: SplatHandle | null = null;
+      try {
+        previewSplat = await addTile(primary, primary.resolvedPreviewUrl);
+      } catch {
+        // A missing preview must not prevent the full-quality primary tile from
+        // loading. This keeps older object-store deployments forward compatible.
+      }
+      if (previewSplat) {
+        primaryRefining = true;
+        publishStatus();
+        primaryRefinementPromise = addTile(primary)
+          .then((fullQualitySplat) => {
+            removeSplat(previewSplat);
+            return fullQualitySplat;
+          })
+          .catch(() => {
+            failures += 1;
+          })
+          .then(() => {
+            primaryRefining = false;
+            publishStatus();
+          });
+      } else {
+        await addTile(primary);
+      }
+    } else {
+      await addTile(primary);
+    }
   } catch (error) {
     scene.remove(spark);
     spark.dispose?.();
     throw error;
   }
-  onStatus?.('ready');
+  publishStatus();
 
   return {
     loadContext: () => {
       if (contextPromise || context.length === 0 || disposed) {
         return contextPromise ?? Promise.resolve();
       }
-      onStatus?.('streaming');
-      // Context tiles are deliberately loaded one at a time. This bounds peak
-      // decode memory and prevents one participant from opening eight large
-      // HF downloads concurrently when Explore Scene is first selected.
+      contextLoading = true;
+      publishStatus();
+      // One context worker starts immediately. Additional workers wait for the
+      // full primary tile so progressive refinement and context streaming never
+      // exceed the manifest's bounded concurrency budget.
       contextPromise = (async () => {
-        let failures = 0;
-        for (const tile of context) {
-          if (disposed) break;
+        let nextTileIndex = 0;
+        const worker = async () => {
+          while (!disposed) {
+            const tile = context[nextTileIndex];
+            nextTileIndex += 1;
+            if (!tile) return;
+            try {
+              await addTile(tile);
+            } catch {
+              failures += 1;
+            }
+          }
+        };
+        const workers = Array.from(
+          { length: Math.min(source.contextConcurrency, context.length) },
+          (_, index) => (
+            index === 0 || !primaryRefinementPromise
+              ? worker()
+              : primaryRefinementPromise.then(worker)
+          ),
+        );
+        await Promise.all(workers);
+        contextLoading = false;
+        publishStatus();
+      })();
+      return contextPromise;
+    },
+    updateView: () => undefined,
+    dispose: () => {
+      disposed = true;
+      loadedSplats.forEach((splat) => removeSplat(splat));
+      scene.remove(spark);
+      spark.dispose?.();
+    },
+  };
+}
+
+async function loadPagedGaussianEnvironment(
+  scene: THREE.Scene,
+  renderer: THREE.WebGLRenderer,
+  source: GaussianPagedAssetSource,
+  profile: GaussianAssetProfile | undefined,
+  onStatus?: (status: GaussianAssetStatus) => void,
+): Promise<GaussianEnvironmentResource> {
+  const { SparkRenderer, SplatMesh } = await import('@sparkjsdev/spark');
+  const spark = new SparkRenderer({ renderer });
+  scene.add(spark);
+  type SplatHandle = InstanceType<typeof SplatMesh>;
+  type LoadedPage = {
+    page: GaussianPageSource;
+    splat: SplatHandle;
+    lastUsed: number;
+  };
+  const maxConcurrent = profile?.max_concurrent_requests ?? 2;
+  const maxResident = profile?.max_resident_pages ?? 6;
+  const timeoutMs = profile?.load_timeout_ms ?? 90000;
+  const scale = readEnvironmentNumber('VITE_MATRIXCITY_GS_SCALE', 1);
+  const baseOffset = new THREE.Vector3(
+    readEnvironmentNumber('VITE_MATRIXCITY_GS_OFFSET_X', 0),
+    readEnvironmentNumber('VITE_MATRIXCITY_GS_OFFSET_Y', 0),
+    readEnvironmentNumber('VITE_MATRIXCITY_GS_OFFSET_Z', 0),
+  );
+  const loaded = new Map<string, LoadedPage>();
+  const loading = new Map<string, Promise<LoadedPage>>();
+  let disposed = false;
+  let failures = 0;
+  let accessSequence = 0;
+  let pendingView: { camera: THREE.Vector3; target: THREE.Vector3 } | null = null;
+  let updatePromise: Promise<void> | null = null;
+  let desiredIds = new Set<string>();
+
+  const removePage = (id: string) => {
+    const loadedPage = loaded.get(id);
+    if (!loadedPage) return;
+    loaded.delete(id);
+    scene.remove(loadedPage.splat);
+    loadedPage.splat.dispose?.();
+  };
+
+  const addPage = (page: GaussianPageSource): Promise<LoadedPage> => {
+    const existing = loaded.get(page.id);
+    if (existing) {
+      existing.lastUsed = ++accessSequence;
+      return Promise.resolve(existing);
+    }
+    const inFlight = loading.get(page.id);
+    if (inFlight) return inFlight;
+
+    const task = (async () => {
+      if (disposed) throw new Error('Gaussian environment has been disposed');
+      const splat = new SplatMesh({ url: page.resolvedUrl });
+      // SPZ is decoded in its native RUB numeric order and interpreted as
+      // local ENU exactly once. This model transform only maps ENU axes into
+      // Three.js; it does not run a RUB-to-RFU conversion or re-quantize SH.
+      splat.rotation.x = -Math.PI / 2;
+      splat.scale.setScalar(scale);
+      splat.position.copy(
+        new THREE.Vector3(...enuToScene(page.position_origin_enu_m))
+          .multiplyScalar(scale)
+          .add(baseOffset),
+      );
+      splat.opacity = 1;
+      scene.add(splat);
+      try {
+        await withTimeout(
+          Promise.resolve(splat.initialized),
+          timeoutMs,
+          `Gaussian page ${page.id} timed out`,
+        );
+        if (disposed) throw new Error('Gaussian environment was disposed while loading');
+        splat.maxSh = 3;
+        const result = { page, splat, lastUsed: ++accessSequence };
+        loaded.set(page.id, result);
+        return result;
+      } catch (error) {
+        scene.remove(splat);
+        splat.dispose?.();
+        throw error;
+      } finally {
+        loading.delete(page.id);
+      }
+    })();
+    loading.set(page.id, task);
+    return task;
+  };
+
+  const evictOutsideView = () => {
+    if (loaded.size <= maxResident) return;
+    const candidates = [...loaded.values()]
+      .filter((entry) => !desiredIds.has(entry.page.id))
+      .sort((left, right) => left.lastUsed - right.lastUsed);
+    while (loaded.size > maxResident && candidates.length > 0) {
+      const candidate = candidates.shift();
+      if (candidate) removePage(candidate.page.id);
+    }
+  };
+
+  const processPendingViews = async () => {
+    while (pendingView && !disposed) {
+      const view = pendingView;
+      pendingView = null;
+      const pages = selectGaussianPagesForView(
+        source.pages,
+        sceneToEnu(view.camera.toArray() as [number, number, number]),
+        sceneToEnu(view.target.toArray() as [number, number, number]),
+        source.queryMarginM,
+        maxResident,
+      );
+      desiredIds = new Set(pages.map((page) => page.id));
+      pages.forEach((page) => {
+        const entry = loaded.get(page.id);
+        if (entry) entry.lastUsed = ++accessSequence;
+      });
+      const missing = pages.filter((page) => !loaded.has(page.id));
+      if (missing.length > 0) onStatus?.('streaming');
+      let nextIndex = 0;
+      const worker = async () => {
+        while (!disposed) {
+          const page = missing[nextIndex];
+          nextIndex += 1;
+          if (!page) return;
           try {
-            await addTile(tile);
+            await addPage(page);
           } catch {
             failures += 1;
           }
         }
-        if (!disposed) onStatus?.(failures > 0 ? 'partial' : 'ready');
-      })();
-      return contextPromise;
+      };
+      await Promise.all(Array.from(
+        { length: Math.min(maxConcurrent, missing.length) },
+        () => worker(),
+      ));
+      evictOutsideView();
+      if (!disposed && !pendingView) onStatus?.(failures > 0 ? 'partial' : 'ready');
+    }
+  };
+
+  const requestViewUpdate = (camera: THREE.Vector3, target: THREE.Vector3) => {
+    if (disposed) return;
+    pendingView = { camera: camera.clone(), target: target.clone() };
+    if (!updatePromise) {
+      updatePromise = processPendingViews().finally(() => {
+        updatePromise = null;
+        if (pendingView && !disposed) requestViewUpdate(pendingView.camera, pendingView.target);
+      });
+    }
+  };
+
+  try {
+    // One nearby page is the bootstrap contract. If it cannot be decoded, the
+    // caller activates the established v2 profile before any study proceeds.
+    const target = MATRIX_CITY_STUDY_SCENE.target.facade_center_enu_m;
+    const bootstrap = selectGaussianPagesForView(
+      source.pages,
+      target,
+      target,
+      0,
+      1,
+    )[0];
+    if (!bootstrap) throw new Error('Gaussian page manifest has no bootstrap page');
+    await addPage(bootstrap);
+    desiredIds = new Set([bootstrap.id]);
+    onStatus?.('ready');
+  } catch (error) {
+    loaded.forEach((entry) => {
+      scene.remove(entry.splat);
+      entry.splat.dispose?.();
+    });
+    loaded.clear();
+    scene.remove(spark);
+    spark.dispose?.();
+    throw error;
+  }
+
+  return {
+    loadContext: async () => {
+      if (updatePromise) await updatePromise;
     },
+    updateView: requestViewUpdate,
     dispose: () => {
       disposed = true;
-      loadedSplats.forEach((splat) => splat.dispose?.());
+      pendingView = null;
+      loaded.forEach((entry) => {
+        scene.remove(entry.splat);
+        entry.splat.dispose?.();
+      });
+      loaded.clear();
+      scene.remove(spark);
       spark.dispose?.();
     },
   };
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: number | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) window.clearTimeout(timeout);
+  }
 }
 
 function readEnvironmentNumber(key: string, fallback: number) {
