@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+from .config import load_backend_config
 from .models import CompareRequest, ExposureRequest, PlanningRequest
 from .scenario_store import load_prepared_mesh, load_scenario, load_surface_cells
 from .study_routes import router as study_router
@@ -123,6 +124,18 @@ def health() -> dict[str, str]:
     """Small readiness endpoint for local dev and frontend checks."""
 
     return {"status": "ok"}
+
+
+@app.get("/api/gaussian-assets")
+def get_gaussian_asset_catalog() -> dict:
+    """Return browser GS delivery profiles without proxying large assets.
+
+    Vercel clients fetch SPZ pages directly from OSS. Keeping the profile list
+    in backend YAML lets a study operator change the default or disable the
+    high-quality path without rebuilding the frontend bundle.
+    """
+
+    return load_backend_config().gaussian_assets.model_dump(mode="json")
 
 
 @app.get("/api/scenarios/{scenario_id}")

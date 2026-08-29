@@ -23,6 +23,10 @@ import {
 } from './matrixCityFlightConfig';
 import { buildStudyUrl } from './studySession';
 import type { CameraProfile, StudyCondition, StudyLanguage } from './types';
+import {
+  loadGaussianAssetCatalog,
+  type GaussianAssetProfile,
+} from './gaussianAssetCatalog';
 
 export function StudySetup() {
   const [participantId, setParticipantId] = useState('P001');
@@ -30,6 +34,7 @@ export function StudySetup() {
   const [condition, setCondition] = useState<StudyCondition>('visual_exposure');
   const [language, setLanguage] = useState<StudyLanguage>('en');
   const [cameraProfileId, setCameraProfileId] = useState('inspection_balanced');
+  const [gaussianProfileId, setGaussianProfileId] = useState('standard_v2');
   const [eventProfileId, setEventProfileId] = useState<EventProfileId>('A');
   const [disclosureCondition, setDisclosureCondition] = useState<DisclosureCondition>('V');
   const [customFlightEnabled, setCustomFlightEnabled] = useState(false);
@@ -38,6 +43,7 @@ export function StudySetup() {
   );
   const [flightImportError, setFlightImportError] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<CameraProfile[]>([]);
+  const [gaussianProfiles, setGaussianProfiles] = useState<GaussianAssetProfile[]>([]);
   const [copied, setCopied] = useState<'warmup' | 'study' | null>(null);
 
   useEffect(() => {
@@ -45,6 +51,10 @@ export function StudySetup() {
       setProfiles(scenario.camera_profiles);
       setCameraProfileId(scenario.default_camera_profile_id);
     }).catch(() => setProfiles([]));
+    loadGaussianAssetCatalog().then((catalog) => {
+      setGaussianProfiles(catalog.profiles);
+      setGaussianProfileId(catalog.default_profile_id);
+    }).catch(() => setGaussianProfiles([]));
   }, []);
 
   useEffect(() => {
@@ -59,12 +69,14 @@ export function StudySetup() {
     sessionId,
     scenarioId: 'hong_kong_mong_kok_01',
     cameraProfileId,
-  }), [cameraProfileId, condition, language, participantId, sessionId]);
+    gaussianProfileId,
+  }), [cameraProfileId, condition, gaussianProfileId, language, participantId, sessionId]);
   const warmupUrl = buildStudyUrl(window.location.origin, session, '/warmup');
   const studyUrl = buildStudyUrl(window.location.origin, session, '/');
   const runnerUrl = buildAssignedRunnerUrl(window.location.origin, {
     entryToken: sessionId,
     language,
+    gaussianProfileId,
   });
   const flightValidation = useMemo(
     () => matrixCityFlightConfigSchema.safeParse(flightConfig),
@@ -77,6 +89,7 @@ export function StudySetup() {
     profile: eventProfileId,
     disclosure: disclosureCondition,
     language,
+    gaussianProfileId,
     flightConfig: customFlightEnabled && flightValidation.success
       ? flightValidation.data
       : undefined,
@@ -174,11 +187,15 @@ export function StudySetup() {
             ))}
           </div>
 
-          <div className="setup-section-title"><span>03</span><div><strong>Language and camera</strong><small>Both remain fixed for the participant.</small></div></div>
+          <div className="setup-section-title"><span>03</span><div><strong>Language, camera and 3D scene</strong><small>All remain fixed for the participant.</small></div></div>
           <div className="setup-field-grid">
             <label><span>Session language</span><select value={language} onChange={(event) => setLanguage(event.target.value as StudyLanguage)}><option value="en">English</option><option value="zh">中文</option></select></label>
             <label><span>Camera profile</span><select value={cameraProfileId} onChange={(event) => setCameraProfileId(event.target.value)}>{profiles.length ? profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>) : <option value="inspection_balanced">Balanced Inspection</option>}</select></label>
+            <label><span>3DGS delivery profile</span><select aria-label="3DGS delivery profile" value={gaussianProfileId} onChange={(event) => setGaussianProfileId(event.target.value)}>{gaussianProfiles.length ? gaussianProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>) : <option value="standard_v2">Standard study scene</option>}</select><small>{gaussianProfiles.find((profile) => profile.id === gaussianProfileId)?.description ?? 'Current pilot asset; high-quality paging remains optional.'}</small></label>
           </div>
+          {gaussianProfileId === 'paged_v3' && (
+            <p className="setup-gs-caution">Pilot profile: loads only the active camera corridor (up to six pages per viewer) and automatically returns to the standard scene if bootstrap fails. Use the standard profile for formal sessions until loading time is accepted.</p>
+          )}
 
           <div className="setup-section-title main-study-title"><span>04</span><div><strong>Main-study media cell</strong><small>Choose one of four event profiles and one disclosure renderer.</small></div></div>
           <div className="event-profile-grid" aria-label="Event profile">
@@ -339,7 +356,7 @@ export function StudySetup() {
           <div className="setup-pair-proof"><Check size={14} /><span>{eventProfileId === 'A' || eventProfileId === 'B' ? 'A/B use identical flight geometry' : 'C/D use identical flight geometry'}</span></div>
 
           <div className="legacy-setup-divider"><span>Legacy calibration tools</span></div>
-          <div className="setup-summary"><span>{condition === 'basic_notice' ? 'C1 Basic Notice' : condition === 'camera_footprint' ? 'C2 Route + Footprint' : 'C3 Visual Exposure'}</span><span>{language === 'zh' ? '中文' : 'English'}</span><span>{cameraProfileId.replaceAll('_', ' ')}</span></div>
+          <div className="setup-summary"><span>{condition === 'basic_notice' ? 'C1 Basic Notice' : condition === 'camera_footprint' ? 'C2 Route + Footprint' : 'C3 Visual Exposure'}</span><span>{language === 'zh' ? '中文' : 'English'}</span><span>{cameraProfileId.replaceAll('_', ' ')}</span><span>{gaussianProfileId.replaceAll('_', ' ')}</span></div>
           <div className="launch-link"><div><small>Start with calibration</small><strong>/warmup</strong></div><button title="Copy warm-up URL" aria-label="Copy warm-up URL" onClick={() => void copy('warmup', warmupUrl)}>{copied === 'warmup' ? <Check size={16} /> : <Clipboard size={16} />}</button></div>
           <a className="setup-primary" href={warmupUrl}>Open participant warm-up <ArrowRight size={17} /></a>
           <div className="launch-link"><div><small>Skip calibration</small><strong>Direct study link</strong></div><button title="Copy study URL" aria-label="Copy study URL" onClick={() => void copy('study', studyUrl)}>{copied === 'study' ? <Check size={16} /> : <Clipboard size={16} />}</button></div>
@@ -451,10 +468,12 @@ function createSessionId(): string {
 function buildAssignedRunnerUrl(origin: string, options: {
   entryToken: string;
   language: StudyLanguage;
+  gaussianProfileId: string;
 }) {
   const url = new URL('/runner', origin);
   url.searchParams.set('lang', options.language);
   url.searchParams.set('entry_token', options.entryToken);
+  url.searchParams.set('gs', options.gaussianProfileId);
   return url.toString();
 }
 
@@ -462,6 +481,7 @@ function buildRunnerPreviewUrl(origin: string, options: {
   profile: EventProfileId;
   disclosure: DisclosureCondition;
   language: StudyLanguage;
+  gaussianProfileId: string;
   flightConfig?: MatrixCityFlightConfig;
 }) {
   const url = new URL('/runner', origin);
@@ -470,6 +490,7 @@ function buildRunnerPreviewUrl(origin: string, options: {
   url.searchParams.set('profile', options.profile);
   url.searchParams.set('disclosure', options.disclosure);
   url.searchParams.set('lang', options.language);
+  url.searchParams.set('gs', options.gaussianProfileId);
   if (options.flightConfig) {
     url.searchParams.set('flight', encodeMatrixCityFlightConfig(options.flightConfig));
   }

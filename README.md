@@ -55,23 +55,30 @@ Vercel:
   frontend/ static React app
 
 Hugging Face Spaces:
-  Dockerized FastAPI + Open3D backend
+  Dockerized FastAPI + Open3D backend only
+
+Alibaba Cloud OSS/CDN:
+  versioned MatrixCity manifest and SPZ assets
 ```
 
 After the Hugging Face Space is live, set the Vercel environment variable:
 
 ```text
 VITE_API_BASE_URL=https://<user-or-org>-<space-name>.hf.space
-VITE_MATRIXCITY_GS_MANIFEST_URL=https://<user-or-org>-<space-name>.hf.space/gs-assets/matrixcity-neighborhood-study-v2.json
-VITE_MATRIXCITY_GS_URL=https://<user-or-org>-<space-name>.hf.space/gs-assets/matrixcity-tile19-study-v1.spz
+VITE_MATRIXCITY_GS_MANIFEST_URL=https://<oss-or-cdn-host>/vep/matrixcity/v2/matrixcity-neighborhood-study-v2.json
+VITE_MATRIXCITY_GS_PAGED_MANIFEST_URL=https://<oss-or-cdn-host>/vep/matrixcity/v3/renderer_manifest.json
+VITE_MATRIXCITY_GS_URL=https://<oss-or-cdn-host>/vep/matrixcity/v2/matrixcity-tile19-study-v1.spz
 ```
 
-The manifest keeps the 25.9 MB primary tile as the first render and loads eight
-lower-density context tiles only when a V-condition participant unlocks scene
-exploration. `VITE_MATRIXCITY_GS_URL` remains a single-tile fallback. For a
-formal study with mainland-China participants, upload the manifest and its nine
-immutable SPZ files to OSS/COS with CDN and CORS enabled, then replace only
-`VITE_MATRIXCITY_GS_MANIFEST_URL`.
+`standard_v2` remains the formal-study default. It renders the established
+25.9 MB primary tile and loads surrounding context only when a V-condition
+participant unlocks scene exploration. The loader also remains compatible with
+the separately prepared preview-first standard manifest. The optional
+`paged_v3` profile streams SH3/SPZ v3 pages
+around the active camera corridor, with two requests and six decoded pages at
+most per viewer. Select it in `/setup` or use `?gs=paged_v3`; failed bootstrap
+or decoding automatically returns to `standard_v2`. `VITE_MATRIXCITY_GS_URL`
+remains an OSS/CDN single-tile compatibility fallback.
 
 For a live study, mount persistent storage in the backend and set:
 
@@ -84,6 +91,7 @@ SQLite is intended for one deployed backend instance with moderate concurrent
 study traffic. Use PostgreSQL before running multiple backend replicas.
 
 See `docs/HF_SPACES_DEPLOYMENT.md` for the full checklist.
+See `docs/OSS_GS_DELIVERY.md` for the GS upload, CDN, CORS, and activation steps.
 See `docs/MATRIXCITY_3DGS.md` for the local subset export and browser-loading
 workflow.
 See `docs/MATRIXCITY_FLIGHT_CONFIGURATION.md` for facilitator trajectory and

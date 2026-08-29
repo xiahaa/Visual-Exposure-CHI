@@ -1,6 +1,6 @@
 # Hugging Face Spaces Backend Deployment
 
-This project should deploy as two services:
+This project should deploy as three services:
 
 ```text
 Frontend:
@@ -8,6 +8,9 @@ Frontend:
 
 Backend:
   Hugging Face Spaces Docker app, running FastAPI + Open3D
+
+GS assets:
+  Alibaba Cloud OSS/CDN, fetched directly by participant browsers
 ```
 
 This avoids Vercel Hobby memory limits for the Open3D raycasting backend.
@@ -43,17 +46,25 @@ Then verify a scenario:
 https://<user-or-org>-<space-name>.hf.space/api/scenarios/hong_kong_mong_kok_01
 ```
 
-Verify the browser-ready MatrixCity asset without downloading it:
+Verify the browser asset catalog separately:
+
+```text
+https://<user-or-org>-<space-name>.hf.space/api/gaussian-assets
+```
+
+The response should keep `standard_v2` as `default_profile_id` and expose
+`paged_v3` as an optional profile with `standard_v2` as its fallback.
+
+The Space may retain the old GS routes for diagnostics:
 
 ```text
 HEAD https://<user-or-org>-<space-name>.hf.space/gs-assets/matrixcity-tile19-study-v1.spz
 GET  https://<user-or-org>-<space-name>.hf.space/gs-assets/matrixcity-neighborhood-study-v2.json
 ```
 
-The Space deployment repository stores the SPZ files under `assets/` using Git
-LFS. `FileResponse` streams them without loading complete files into Python
-memory and marks each versioned URL as immutable for browser caching. The JSON
-manifest records tile origins, bounds, splat counts, byte sizes, and load order.
+Do not use these routes for production participant delivery. HF egress from
+mainland China is substantially slower than OSS/CDN and competes with Open3D API
+traffic.
 
 ## 3. Connect Vercel Frontend To The Space
 
@@ -61,8 +72,9 @@ In the Vercel project settings, set:
 
 ```text
 VITE_API_BASE_URL=https://<user-or-org>-<space-name>.hf.space
-VITE_MATRIXCITY_GS_MANIFEST_URL=https://<user-or-org>-<space-name>.hf.space/gs-assets/matrixcity-neighborhood-study-v2.json
-VITE_MATRIXCITY_GS_URL=https://<user-or-org>-<space-name>.hf.space/gs-assets/matrixcity-tile19-study-v1.spz
+VITE_MATRIXCITY_GS_MANIFEST_URL=https://<oss-or-cdn-host>/vep/matrixcity/v2/matrixcity-neighborhood-study-v2.json
+VITE_MATRIXCITY_GS_PAGED_MANIFEST_URL=https://<oss-or-cdn-host>/vep/matrixcity/v3/renderer_manifest.json
+VITE_MATRIXCITY_GS_URL=https://<oss-or-cdn-host>/vep/matrixcity/v2/matrixcity-tile19-study-v1.spz
 ```
 
 Then redeploy the Vercel frontend.
@@ -102,11 +114,11 @@ CORS_ALLOW_ORIGIN_REGEX=https://(.*\.vercel\.app|visual-exposure\.example\.org)
   `libgomp1` for OpenMP support.
 - The backend keeps the same API paths, including `/api/exposure/compute` and
   `/api/planning/optimize`.
-- The primary SPZ is 25.9 MB. Eight context tiles add 36.6 MB, for a maximum
-  neighborhood transfer of 62.5 MB (59.6 MiB) and 2.4 million splats.
+- The deployed standard profile starts with the 25.9 MB primary tile. Eight
+  context tiles add 36.6 MB, for a final 2.4-million-splat scene.
 - Fixed S-condition views and UAV-camera views load only the primary tile. The
-  additional context is requested sequentially only after `Explore scene` is
-  selected in V, which bounds peak decode memory and simultaneous downloads.
+  additional context uses manifest-controlled concurrency only after `Explore
+  scene` is selected in V.
 - CPU Basic provides 2 vCPU, 16 GB RAM, and 50 GB ephemeral disk. This is ample
   for the 62.5 MB immutable asset set because GS decoding/rendering happens in
   the participant browser, not on the Space GPU. See the official
@@ -115,7 +127,11 @@ CORS_ALLOW_ORIGIN_REGEX=https://(.*\.vercel\.app|visual-exposure\.example\.org)
   Open3D API workload, not GS storage. One uncached participant may transfer up
   to 62.5 MB; 20 simultaneous V participants may request about 1.25 GB in the
   worst case. Do not run many 20-second Open3D jobs concurrently on 2 vCPU.
-- HF hosting is suitable for development and a small laboratory pilot. For a
-  larger or mainland-China study, move the manifest and SPZ files to OSS/COS
-  plus a CDN and change only `VITE_MATRIXCITY_GS_MANIFEST_URL`; no frontend code
-  change is required.
+- HF remains suitable for the API backend. Keep all production GS manifest,
+  preview, full-quality, and context URLs on OSS/CDN.
+- The optional paged profile is roughly 1.06 GB in total, but the browser never
+  requests it all. It selects a maximum of six SPZ v3 pages per scene viewer
+  around the active camera corridor. Decoding and rendering use the participant
+  browser GPU; HF publishes only the small profile catalog.
+
+See `OSS_GS_DELIVERY.md` for the production asset activation checklist.

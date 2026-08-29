@@ -10,6 +10,34 @@ Returns backend status.
 }
 ```
 
+## `GET /api/gaussian-assets`
+
+Returns the browser-side MatrixCity delivery profiles. The API publishes OSS
+manifest URLs and loading budgets; it does not proxy or decode SPZ data.
+
+```json
+{
+  "default_profile_id": "standard_v2",
+  "profiles": [
+    {
+      "id": "paged_v3",
+      "label": "High-quality paged scene",
+      "description": "SH3 MatrixCity pages streamed around the active camera corridor.",
+      "manifest_url": "https://example.oss-cn-beijing.aliyuncs.com/vep/matrixcity/v3/renderer_manifest.json",
+      "format": "paged",
+      "fallback_profile_id": "standard_v2",
+      "max_concurrent_requests": 2,
+      "max_resident_pages": 6,
+      "load_timeout_ms": 90000
+    }
+  ]
+}
+```
+
+`standard_v2` remains the study default. The frontend fixes the selected profile
+in the `gs` URL parameter and activates the configured fallback if the optional
+paged profile cannot bootstrap.
+
 ## `GET /api/scenarios/{scenario_id}`
 
 Returns scenario metadata, default route, camera defaults, buildings, and

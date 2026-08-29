@@ -3,6 +3,7 @@ import {
   enuDirectionToScene,
   enuToScene,
   MATRIX_CITY_STUDY_SCENE,
+  sceneToEnu,
 } from './matrixCityScene';
 
 describe('MatrixCity study coordinates', () => {
@@ -21,6 +22,11 @@ describe('MatrixCity study coordinates', () => {
 
     expect(converted).toEqual([10, 20, -5]);
     expect(Math.hypot(...converted)).toBeCloseTo(Math.hypot(10, 5, 20), 8);
+  });
+
+  it('round-trips scene points without changing the MatrixCity coordinate basis', () => {
+    const point: [number, number, number] = [238, 3720, 40];
+    expect(sceneToEnu(enuToScene(point))).toEqual(point);
   });
 
   it('converts directions without applying the asset translation', () => {

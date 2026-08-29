@@ -8,7 +8,11 @@ import { scenarioFixture } from './test/fixtures';
 describe('StudySetup', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(scenarioFixture));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => (
+      String(input).includes('/api/gaussian-assets')
+        ? jsonResponse(gaussianCatalogFixture)
+        : jsonResponse(scenarioFixture)
+    ));
   });
 
   it('builds locked warm-up and study URLs from facilitator choices', async () => {
@@ -26,6 +30,7 @@ describe('StudySetup', () => {
     expect(warmup).toHaveAttribute('href', expect.stringContaining('lang=zh'));
     expect(warmup).toHaveAttribute('href', expect.stringContaining('participant_id=P042'));
     expect(study).toHaveAttribute('href', expect.stringContaining('/?condition=c2'));
+    expect(study).toHaveAttribute('href', expect.stringContaining('gs=standard_v2'));
   });
 
   it('keeps participant assignment server-side and builds a separate cell preview URL', async () => {
@@ -45,6 +50,19 @@ describe('StudySetup', () => {
     expect(preview).toHaveAttribute('href', expect.stringContaining('profile=D'));
     expect(preview).toHaveAttribute('href', expect.stringContaining('disclosure=S'));
     expect(runner).toHaveAttribute('href', expect.stringContaining('lang=zh'));
+  });
+
+  it('locks an optional paged GS profile into warm-up and runner URLs', async () => {
+    render(<StudySetup />);
+    await screen.findByText('High-quality paged scene');
+    await userEvent.selectOptions(screen.getByLabelText('3DGS delivery profile'), 'paged_v3');
+
+    expect(screen.getByRole('link', { name: /Open participant warm-up/ }))
+      .toHaveAttribute('href', expect.stringContaining('gs=paged_v3'));
+    expect(screen.getByRole('link', { name: /Open assigned study/ }))
+      .toHaveAttribute('href', expect.stringContaining('gs=paged_v3'));
+    expect(screen.getByRole('link', { name: /Preview selected cell/ }))
+      .toHaveAttribute('href', expect.stringContaining('gs=paged_v3'));
   });
 
   it('guides and serializes a validated facilitator flight configuration', async () => {
@@ -88,3 +106,31 @@ describe('StudySetup', () => {
 function jsonResponse(data: unknown): Response {
   return { ok: true, status: 200, statusText: 'OK', json: async () => data } as Response;
 }
+
+const gaussianCatalogFixture = {
+  default_profile_id: 'standard_v2',
+  profiles: [
+    {
+      id: 'standard_v2',
+      label: 'Standard study scene',
+      description: 'Current pilot scene.',
+      manifest_url: 'https://assets.example.test/v2.json',
+      format: 'tiled',
+      fallback_profile_id: null,
+      max_concurrent_requests: 2,
+      max_resident_pages: 9,
+      load_timeout_ms: 90000,
+    },
+    {
+      id: 'paged_v3',
+      label: 'High-quality paged scene',
+      description: 'Optional SH3 pages.',
+      manifest_url: 'https://assets.example.test/v3.json',
+      format: 'paged',
+      fallback_profile_id: 'standard_v2',
+      max_concurrent_requests: 2,
+      max_resident_pages: 6,
+      load_timeout_ms: 90000,
+    },
+  ],
+};

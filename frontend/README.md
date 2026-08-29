@@ -42,6 +42,21 @@ Spaces serves the FastAPI/Open3D backend.
   code.
 ```
 
+`/setup` also fixes a 3DGS delivery profile into generated links:
+
+```text
+gs=standard_v2
+  Established progressive scene and formal-study default.
+
+gs=paged_v3
+  Optional high-quality SPZ v3 paging with automatic standard_v2 fallback.
+```
+
+The paged manifest URL is configured with
+`VITE_MATRIXCITY_GS_PAGED_MANIFEST_URL`. Runtime request concurrency, resident
+page count, timeout, default, and fallback are published by the backend at
+`GET /api/gaussian-assets`.
+
 Participant URLs must not contain or rely on `profile` or `disclosure`; those
 parameters are honored only in facilitator mode.
 
